@@ -1,0 +1,13 @@
+# dependencies / builds
+node_modules/
+.next/
+__pycache__/
+*.pyc
+
+# data — contains password hashes and employee records; recreate with `python -m app.seed`
+*.db
+*.db-journal
+
+# secrets / local settings
+.env*
+.claude/settings.local.json
