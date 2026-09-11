@@ -530,4 +530,23 @@ def delete_document(id: int, user: User, db: DB):
     run(db, "DELETE FROM documents WHERE id=:id", id=id)
 
 
+# ---- Disha assistant ----
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]  # clients can't inject system or tool messages
+    content: Annotated[str, Field(min_length=1, max_length=4000)]
+
+
+class ChatIn(BaseModel):
+    messages: Annotated[list[ChatMessage], Field(min_length=1, max_length=20)]
+
+
+# ponytail: no per-user rate limit; add one before rollout (each question = 1-6 OpenAI calls)
+@api.post("/chat")
+def chat(body: ChatIn, sid: Annotated[Optional[str], Cookie()] = None):
+    from .disha import chat as ask  # lazy: disha imports this module
+    with engine.begin() as db:  # auth only; don't hold a transaction while waiting on OpenAI
+        user = current_user(db, sid)
+    return {"reply": ask(user, [m.model_dump() for m in body.messages])}
+
+
 app.include_router(api)

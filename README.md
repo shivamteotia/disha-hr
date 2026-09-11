@@ -22,12 +22,22 @@ First API start prints the admin login (`admin@company.com` / random password; o
 Env: `DATABASE_URL`, `ADMIN_PASSWORD`, `TZ` (attendance uses server time), `HTTPS=1` (Secure cookie behind TLS),
 `API_URL` (frontend → API, default `http://127.0.0.1:8000`).
 
+## Disha assistant
+Chat tab in the app. Answers from the user's own HR data through tools that call the same permission-checked
+functions as the API (`backend/app/disha.py`): an employee can never get another employee's data through chat.
+Read-only for now.
+
+Setup: set `OPENAI_API_KEY` for the backend (and optionally `OPENAI_MODEL`, default `gpt-5.5`), then restart the API.
+Check without calling OpenAI: `cd backend && python test_disha.py`.
+
 ## Layout
 | Path | What |
 |---|---|
 | `backend/app/db.py` | Postgres schema, password hashing, working-day helper |
 | `backend/app/main.py` | FastAPI routes + permission rules |
 | `backend/app/seed.py` | dummy data |
+| `backend/app/disha.py` | Disha chatbot: OpenAI tool calling + tools |
+| `backend/test_disha.py` | chatbot permission + tool-loop check (no OpenAI calls) |
 | `frontend/app/(app)/*/page.js` | one page per module; `frontend/components/` shared shell + UI |
 | `test.mjs` | HTTP tests for access control, approvals, leave rules |
 
