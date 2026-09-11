@@ -7,7 +7,7 @@ import { api } from '@/lib';
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
 
-const TABS = [['/', 'Dashboard'], ['/attendance', 'Attendance'], ['/leaves', 'Leaves'], ['/expenses', 'Expenses'],
+const TABS = [['/', 'Dashboard'], ['/disha', 'Disha ✨'], ['/attendance', 'Attendance'], ['/leaves', 'Leaves'], ['/expenses', 'Expenses'],
   ['/payslips', 'Payslips'], ['/goals', 'Goals'], ['/documents', 'Documents'], ['/employees', 'Employees'], ['/profile', 'Profile']];
 
 export default function Shell({ children }) {

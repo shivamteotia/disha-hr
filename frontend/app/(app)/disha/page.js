@@ -1,0 +1,51 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { useApp } from '@/components/Shell';
+import { api } from '@/lib';
+
+const SUGGESTIONS = ['How many leaves do I have left?', 'Show my attendance this month', 'When is the next holiday?', 'Who is my manager?'];
+
+export default function Disha() {
+  const { me } = useApp();
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const end = useRef(null);
+  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, busy]);
+
+  async function send(text) {
+    text = text.trim();
+    if (!text || busy) return;
+    const next = [...msgs, { role: 'user', content: text }];
+    setMsgs(next); setInput(''); setBusy(true);
+    try {
+      // failed turns are shown but never sent back as history
+      const history = next.filter((m) => !m.error).slice(-20).map(({ role, content }) => ({ role, content }));
+      const { reply } = await api('/chat', 'POST', { messages: history });
+      setMsgs([...next, { role: 'assistant', content: reply }]);
+    } catch (e) {
+      setMsgs([...next, { role: 'assistant', content: `Sorry, something went wrong: ${e.message}`, error: true }]);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <div className="row between"><h2>Disha ✨</h2>
+        {msgs.length > 0 && <button className="btn sm sec" onClick={() => setMsgs([])}>New chat</button>}</div>
+      <div className="chat-log">
+        {!msgs.length && <div className="m">
+          <p>Hi {me.name.split(' ')[0]}, I'm Disha. Ask me about your leaves, attendance, payslips, goals, expenses, holidays or team.</p>
+          <div className="row">{SUGGESTIONS.map((s) => <button key={s} className="btn sm sec" onClick={() => send(s)}>{s}</button>)}</div>
+        </div>}
+        {msgs.map((m, i) => <div key={i} className={`bubble ${m.role}${m.error ? ' error' : ''}`}>{m.content}</div>)}
+        {busy && <div className="bubble assistant m">Disha is thinking…</div>}
+        <div ref={end} />
+      </div>
+      <form className="row" style={{ marginTop: 12, flexWrap: 'nowrap' }} onSubmit={(e) => { e.preventDefault(); send(input); }}>
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask Disha…" maxLength={2000} disabled={busy} />
+        <button className="btn" disabled={busy || !input.trim()}>Send</button>
+      </form>
+      <p className="m" style={{ fontSize: 12, marginBottom: 0 }}>Disha can make mistakes. Check important numbers on the related page.</p>
+    </div>
+  );
+}

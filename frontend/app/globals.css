@@ -28,4 +28,9 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--b);white-space:n
 .login{max-width:360px;margin:12vh auto}
 .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 16px;border-radius:8px;z-index:9}
 .slip td{white-space:normal}
+.chat-log{height:calc(100dvh - 290px);min-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0}
+.bubble{max-width:85%;padding:10px 12px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble.user{align-self:flex-end;background:var(--p);color:#fff}
+.bubble.assistant{align-self:flex-start;background:#f1f3f9}
+.bubble.error{background:#fde2e2;color:var(--bad)}
 @media print{header,nav,.noprint{display:none!important}.card{border:0}}
