@@ -1,5 +1,10 @@
 fastapi>=0.115
 uvicorn>=0.30
 sqlalchemy>=2.0
+python-dotenv>=1.0
 openai>=3.6
-psycopg[binary]>=3.2  # only needed when DATABASE_URL points at PostgreSQL
+langgraph>=1.0          # Disha agent graph
+nemoguardrails>=0.24    # input/output rails
+qdrant-client>=1.19     # policy vector store
+logfire>=5.0            # tracing (no-op without LOGFIRE_TOKEN)
+psycopg[binary]>=3.2    # only needed when DATABASE_URL points at PostgreSQL

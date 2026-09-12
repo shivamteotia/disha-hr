@@ -15,6 +15,12 @@ from sqlalchemy import (Boolean, CheckConstraint, Column, Date, DateTime, Foreig
                         Numeric, Table, Text, Time, UniqueConstraint, create_engine, event, func, text)
 from sqlalchemy.engine import make_url
 
+try:  # backend/.env holds the API keys and optional DATABASE_URL
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:
+    pass
+
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parents[1] / 'disha.db'}")
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if IS_SQLITE else {})
