@@ -22,13 +22,30 @@ First API start prints the admin login (`admin@company.com` / random password; o
 Env: `DATABASE_URL`, `ADMIN_PASSWORD`, `TZ` (attendance uses server time), `HTTPS=1` (Secure cookie behind TLS),
 `API_URL` (frontend → API, default `http://127.0.0.1:8000`).
 
-## Disha assistant
-Chat tab in the app. Answers from the user's own HR data through tools that call the same permission-checked
-functions as the API (`backend/app/disha.py`): an employee can never get another employee's data through chat.
-Read-only for now.
+## Disha assistant (agentic)
 
-Setup: set `OPENAI_API_KEY` for the backend (and optionally `OPENAI_MODEL`, default `gpt-5.5`), then restart the API.
-Check without calling OpenAI: `cd backend && python test_disha.py`.
+```
+question -> input rail -> planner -> conversational          -> responder -> output rail -> answer
+                                  -> policy  (Qdrant RAG)    -^
+                                  -> data    (text-to-SQL)   -^
+```
+
+- **Planner** (`app/agent.py`, LangGraph) decides the route, so small talk never touches retrieval.
+- **Policy route** searches company policies in Qdrant (`data/policies/*.md`, OpenAI embeddings).
+- **Data route** writes SQL — but only against **temp views already scoped to the asking employee**
+  (`app/safe_sql.py`): one SELECT, whitelisted view names, forced row limit, own connection that is
+  never pooled. Managers also see their team's leaves and expenses; admins see everything.
+- **Guardrails** (`app/rails.py`, NeMo) screen the question and the answer; both degrade to open if unavailable.
+- **Tracing**: Logfire spans per node, active when `LOGFIRE_TOKEN` is set.
+
+Setup: copy `backend/.env.example` to `backend/.env` and fill in `OPENAI_API_KEY` (plus Qdrant keys for
+policy answers), then index the policies:
+
+```
+cd backend && python -m app.knowledge --wipe    # embeds data/policies/*.md into Qdrant
+```
+
+Checks without OpenAI or Qdrant calls: `cd backend && python test_agent.py`
 
 ## Layout
 | Path | What |
@@ -36,8 +53,12 @@ Check without calling OpenAI: `cd backend && python test_disha.py`.
 | `backend/app/db.py` | Postgres schema, password hashing, working-day helper |
 | `backend/app/main.py` | FastAPI routes + permission rules |
 | `backend/app/seed.py` | dummy data |
-| `backend/app/disha.py` | Disha chatbot: OpenAI tool calling + tools |
-| `backend/test_disha.py` | chatbot permission + tool-loop check (no OpenAI calls) |
+| `backend/app/agent.py` | Disha agent graph: planner, retriever, text-to-SQL, responder |
+| `backend/app/safe_sql.py` | per-employee views + SQL validation for the data route |
+| `backend/app/knowledge.py` | policy chunking, embeddings, Qdrant search + `--wipe` ingest |
+| `backend/app/rails.py` | NeMo Guardrails input/output checks |
+| `backend/test_agent.py` | SQL sandbox + routing checks (no OpenAI calls) |
+| `data/policies/*.md` | company policies answered from (sample content, replace for real use) |
 | `frontend/app/(app)/*/page.js` | one page per module; `frontend/components/` shared shell + UI |
 | `test.mjs` | HTTP tests for access control, approvals, leave rules |
 

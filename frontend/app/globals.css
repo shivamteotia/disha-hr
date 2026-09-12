@@ -33,4 +33,5 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--b);white-space:n
 .bubble.user{align-self:flex-end;background:var(--p);color:#fff}
 .bubble.assistant{align-self:flex-start;background:#f1f3f9}
 .bubble.error{background:#fde2e2;color:var(--bad)}
+.meta{font-size:11px;color:var(--m);margin:2px 0 6px 4px;max-width:85%}
 @media print{header,nav,.noprint{display:none!important}.card{border:0}}

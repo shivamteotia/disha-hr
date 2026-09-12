@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/components/Shell';
 import { api } from '@/lib';
 
-const SUGGESTIONS = ['How many leaves do I have left?', 'Show my attendance this month', 'When is the next holiday?', 'Who is my manager?'];
+const SUGGESTIONS = ['How many leaves do I have left?', 'How much notice do I need for earned leave?',
+  'Show my attendance this month', 'When is the next holiday?'];
 
 export default function Disha() {
   const { me } = useApp();
@@ -21,8 +22,8 @@ export default function Disha() {
     try {
       // failed turns are shown but never sent back as history
       const history = next.filter((m) => !m.error).slice(-20).map(({ role, content }) => ({ role, content }));
-      const { reply } = await api('/chat', 'POST', { messages: history });
-      setMsgs([...next, { role: 'assistant', content: reply }]);
+      const { reply, route, trace, sources } = await api('/chat', 'POST', { messages: history });
+      setMsgs([...next, { role: 'assistant', content: reply, meta: { route, trace, sources } }]);
     } catch (e) {
       setMsgs([...next, { role: 'assistant', content: `Sorry, something went wrong: ${e.message}`, error: true }]);
     } finally { setBusy(false); }
@@ -34,10 +35,17 @@ export default function Disha() {
         {msgs.length > 0 && <button className="btn sm sec" onClick={() => setMsgs([])}>New chat</button>}</div>
       <div className="chat-log">
         {!msgs.length && <div className="m">
-          <p>Hi {me.name.split(' ')[0]}, I'm Disha. Ask me about your leaves, attendance, payslips, goals, expenses, holidays or team.</p>
+          <p>Hi {me.name.split(' ')[0]}, I'm Disha. Ask about your leaves, attendance, payslips, goals, expenses,
+            your team, or company policy.</p>
           <div className="row">{SUGGESTIONS.map((s) => <button key={s} className="btn sm sec" onClick={() => send(s)}>{s}</button>)}</div>
         </div>}
-        {msgs.map((m, i) => <div key={i} className={`bubble ${m.role}${m.error ? ' error' : ''}`}>{m.content}</div>)}
+        {msgs.map((m, i) => <div key={i}>
+          <div className={`bubble ${m.role}${m.error ? ' error' : ''}`}>{m.content}</div>
+          {m.meta?.trace?.length > 0 && <div className="meta">
+            {m.meta.trace.join(' → ')}
+            {m.meta.sources?.length > 0 && ` · policy: ${m.meta.sources.join(', ')}`}
+          </div>}
+        </div>)}
         {busy && <div className="bubble assistant m">Disha is thinking…</div>}
         <div ref={end} />
       </div>

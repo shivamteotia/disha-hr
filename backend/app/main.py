@@ -1,4 +1,9 @@
 """DISHA HR API. Run from backend/:  uvicorn app.main:app --reload"""
+import logfire  # configured first so every module's spans are captured
+from .db import engine, hash_pw, init, iso, row, rows, run, utcnow, verify_pw, working_days  # loads backend/.env
+
+logfire.configure(send_to_logfire="if-token-present", service_name="disha-hr", console=False)
+
 import base64
 import binascii
 import datetime as dt
@@ -15,8 +20,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy import Connection
 from sqlalchemy.exc import IntegrityError
-
-from .db import engine, hash_pw, init, iso, row, rows, run, utcnow, verify_pw, working_days
 
 # ponytail: fixed yearly quotas for everyone, move to a table when policy differs per grade/location
 QUOTA = {"CL": 12, "SL": 12, "EL": 15}
@@ -543,10 +546,12 @@ class ChatIn(BaseModel):
 # ponytail: no per-user rate limit; add one before rollout (each question = 1-6 OpenAI calls)
 @api.post("/chat")
 def chat(body: ChatIn, sid: Annotated[Optional[str], Cookie()] = None):
-    from .disha import chat as ask  # lazy: disha imports this module
+    from .agent import chat as ask  # lazy: agent imports heavy deps and this module's db helpers
     with engine.begin() as db:  # auth only; don't hold a transaction while waiting on OpenAI
         user = current_user(db, sid)
-    return {"reply": ask(user, [m.model_dump() for m in body.messages])}
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise HTTPException(503, "Disha isn't set up yet: the server has no OPENAI_API_KEY")
+    return ask(dict(user), [m.model_dump() for m in body.messages])
 
 
 app.include_router(api)
