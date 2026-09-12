@@ -1,0 +1,515 @@
+<title>Inside DISHA HR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root{
+    --paper:#F6F7FA; --surface:#FFFFFF; --sunk:#EEF1F7;
+    --ink:#131B2E; --muted:#5C6780; --line:#DCE1EC;
+    --brand:#2451B7; --brand-soft:#E7EEFC;
+    --data:#0F766E; --policy:#6D4AFF; --stop:#C0392B; --go:#1A8A4A; --warn:#9A6700;
+    --display:'Archivo', 'Segoe UI', sans-serif;
+    --body:'Source Serif 4', Georgia, serif;
+    --mono:'JetBrains Mono', 'Consolas', monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0D1220; --surface:#151C2C; --sunk:#1B2334;
+      --ink:#E8EBF3; --muted:#9BA5BD; --line:#28324B;
+      --brand:#7EA2FF; --brand-soft:#1A2545;
+      --data:#41C8B6; --policy:#A793FF; --stop:#FF8C80; --go:#5BD08C; --warn:#E5B95C;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0D1220; --surface:#151C2C; --sunk:#1B2334;
+    --ink:#E8EBF3; --muted:#9BA5BD; --line:#28324B;
+    --brand:#7EA2FF; --brand-soft:#1A2545;
+    --data:#41C8B6; --policy:#A793FF; --stop:#FF8C80; --go:#5BD08C; --warn:#E5B95C;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.6;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 24px 96px;display:grid;grid-template-columns:186px minmax(0,1fr);gap:48px}
+  h1,h2,h3,.label,nav,table,figcaption,.tile b,.pill{font-family:var(--display)}
+  code,kbd,.mono{font-family:var(--mono);font-size:.86em}
+
+  /* masthead */
+  header{grid-column:1/-1;padding:56px 0 36px;border-bottom:1px solid var(--line);margin-bottom:40px}
+  .eyebrow{font-family:var(--display);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);
+           font-weight:600;margin:0 0 14px}
+  h1{font-size:clamp(38px,6vw,62px);line-height:1.02;letter-spacing:-.02em;font-weight:700;margin:0 0 18px;text-wrap:balance}
+  .standfirst{font-size:20px;color:var(--muted);max-width:62ch;margin:0}
+
+  /* facts */
+  .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;background:var(--line);
+         border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:32px}
+  .tile{background:var(--surface);padding:14px 16px}
+  .tile b{display:block;font-size:26px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .tile span{font-size:12.5px;color:var(--muted);font-family:var(--display)}
+
+  /* nav rail */
+  nav{position:sticky;top:24px;align-self:start;font-size:13.5px;line-height:1.45}
+  nav ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;counter-reset:s}
+  nav a{color:var(--muted);text-decoration:none;display:flex;gap:9px}
+  nav a::before{counter-increment:s;content:counter(s,decimal-leading-zero);color:var(--brand);font-size:11px;padding-top:2px}
+  nav a:hover,nav a:focus-visible{color:var(--ink)}
+
+  main{min-width:0}
+  section{margin:0 0 60px;scroll-margin-top:24px}
+  h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:600;
+     margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+  h3{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:32px 0 8px}
+  p{margin:0 0 16px;max-width:70ch}
+  .lede{font-size:18.5px}
+  strong{font-weight:600}
+  a{color:var(--brand)}
+
+  /* figures break wider than the text column */
+  figure{margin:28px 0;padding:0}
+  .fig-body{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;overflow-x:auto}
+  figure svg{display:block;width:100%;min-width:580px;height:auto;color:var(--ink)}
+  figcaption{font-size:13px;color:var(--muted);margin-top:10px;max-width:70ch}
+
+  table{width:100%;border-collapse:collapse;font-size:14.5px;margin:18px 0}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  td code{color:var(--ink)}
+  .scroller{overflow-x:auto}
+
+  .pill{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+        padding:2px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+  .p-data{color:var(--data)} .p-policy{color:var(--policy)} .p-chat{color:var(--brand)} .p-stop{color:var(--stop)}
+
+  pre{background:var(--sunk);border:1px solid var(--line);border-left:3px solid var(--brand);border-radius:8px;
+      padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.55;margin:16px 0}
+  pre b{font-weight:500;color:var(--muted)}
+
+  .note{border-left:3px solid var(--warn);background:var(--sunk);padding:14px 18px;border-radius:0 8px 8px 0;margin:20px 0}
+  .note p{margin:0;font-size:15.5px}
+  .note .label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);
+               font-weight:600;margin-bottom:4px}
+
+  ul.plain{margin:0 0 16px;padding-left:20px;max-width:70ch}
+  ul.plain li{margin-bottom:7px}
+
+  footer{grid-column:1/-1;border-top:1px solid var(--line);padding-top:20px;font-size:13.5px;color:var(--muted)}
+
+  @media (max-width:860px){
+    .wrap{grid-template-columns:1fr;gap:0;padding:0 18px 64px}
+    nav{position:static;margin-bottom:36px;border-bottom:1px solid var(--line);padding-bottom:20px}
+    nav ol{flex-direction:row;flex-wrap:wrap;gap:6px 16px}
+    body{font-size:16px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  a:focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:3px}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Employee HR platform &middot; built September 2026</p>
+    <h1>Inside DISHA HR</h1>
+    <p class="standfirst">A mobile-friendly HR app for 20-odd employees — attendance, leave, payslips, expenses — with
+      an AI assistant that answers questions about a person's own records and the company's policies, and is built so
+      it cannot answer about anyone else's.</p>
+    <div class="facts">
+      <div class="tile"><b>9</b><span>screens</span></div>
+      <div class="tile"><b>35</b><span>API endpoints</span></div>
+      <div class="tile"><b>4</b><span>assistant routes</span></div>
+      <div class="tile"><b>6</b><span>policy documents</span></div>
+      <div class="tile"><b>3,152</b><span>seeded attendance days</span></div>
+      <div class="tile"><b>0</b><span>npm/pip frameworks in the UI</span></div>
+    </div>
+  </header>
+
+  <nav aria-label="Sections">
+    <ol>
+      <li><a href="#what">What it does</a></li>
+      <li><a href="#stack">The stack</a></li>
+      <li><a href="#request">A request, end to end</a></li>
+      <li><a href="#who">Who can see what</a></li>
+      <li><a href="#agent">The Disha agent</a></li>
+      <li><a href="#sandbox">The SQL sandbox</a></li>
+      <li><a href="#data">Data model</a></li>
+      <li><a href="#files">Where things live</a></li>
+      <li><a href="#run">Running it</a></li>
+      <li><a href="#next">Not built yet</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="what">
+      <h2>What it does</h2>
+      <p class="lede">Three kinds of people use the same app, and the app shows each of them a different slice of the
+        same data.</p>
+      <p>An <strong>employee</strong> checks in and out, applies for leave, claims expenses, reads their payslips,
+        tracks goals and uploads documents. A <strong>manager</strong> sees all of that for themselves, plus their
+        team's leave and expense requests, which they approve or reject. An <strong>admin</strong> (HR) sees everyone,
+        adds and deactivates employees, fixes attendance, enters payslips, and maintains the holiday calendar and
+        announcements.</p>
+      <p>On top sits <strong>Disha</strong>, a chat tab. Ask "how many casual leaves do I have left?" and it queries
+        the database; ask "how much notice for earned leave?" and it reads the company policy; ask for a colleague's
+        salary and it refuses. The rest of this page is mostly about how that last sentence is guaranteed rather
+        than hoped for.</p>
+    </section>
+
+    <section id="stack">
+      <h2>The stack — and where each piece is used</h2>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Layer</th><th>Technology</th><th>Where it lives / what it does here</th></tr></thead>
+          <tbody>
+            <tr><td>Web app</td><td>Next.js 16, React 19</td><td><code>frontend/app/(app)/*/page.js</code> — one file per screen; no UI framework, plain CSS</td></tr>
+            <tr><td>API</td><td>FastAPI</td><td><code>backend/app/main.py</code> — 35 endpoints, every one permission-checked</td></tr>
+            <tr><td>Database</td><td>SQLAlchemy Core → SQLite</td><td><code>backend/app/db.py</code> — one file, <code>disha.db</code>; swap to PostgreSQL by setting <code>DATABASE_URL</code></td></tr>
+            <tr><td>Sessions</td><td><code>scrypt</code> + cookie</td><td>Hashed passwords, random token, <code>HttpOnly</code> + <code>SameSite=Strict</code>, 7-day expiry</td></tr>
+            <tr><td>Agent</td><td>LangGraph</td><td><code>backend/app/agent.py</code> — planner, retriever, SQL, responder as graph nodes</td></tr>
+            <tr><td>Models</td><td>OpenAI</td><td><code>gpt-5.5</code> answers; <code>gpt-5.4-mini</code> plans, writes SQL and runs the rails</td></tr>
+            <tr><td>Policy search</td><td>Qdrant Cloud + <code>text-embedding-3-small</code></td><td><code>backend/app/knowledge.py</code> — 13 chunks from <code>data/policies/</code></td></tr>
+            <tr><td>Guardrails</td><td>NeMo Guardrails</td><td><code>backend/app/rails.py</code> — self-check on the question and on the answer</td></tr>
+            <tr><td>Tracing</td><td>Pydantic Logfire</td><td>A span per node; silent when <code>LOGFIRE_TOKEN</code> is unset</td></tr>
+            <tr><td>Tests</td><td>Node + Python, no framework</td><td><code>test.mjs</code> (API over HTTP), <code>backend/test_agent.py</code> (sandbox + routing)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The choices are deliberately boring below the agent: one database file, no ORM models, no state library in the
+        browser, no build step beyond Next's own. Everything interesting is in who is allowed to see what.</p>
+    </section>
+
+    <section id="request">
+      <h2>A request, end to end</h2>
+      <p>The browser only ever talks to the Next.js server. It forwards <code>/api/*</code> to FastAPI, which keeps
+        the session cookie same-origin — that is what makes the app work unchanged from a phone on the same Wi-Fi.</p>
+
+      <figure>
+        <div class="fig-body">
+          <svg viewBox="0 0 900 300" role="img" aria-label="A browser request passes through Next.js to FastAPI, which authenticates the cookie, runs a scoped query against SQLite, and returns JSON. The agent additionally calls OpenAI and Qdrant.">
+            <defs>
+              <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="currentColor"></polygon>
+              </marker>
+              <marker id="ar-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="#2451B7"></polygon>
+              </marker>
+            </defs>
+
+            <rect x="16" y="72" width="150" height="72" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="91" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Browser</text>
+            <text x="91" y="120" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".7">phone or laptop</text>
+
+            <rect x="222" y="72" width="150" height="72" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="297" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Next.js</text>
+            <text x="297" y="120" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".7">:3000 · pages + proxy</text>
+
+            <rect x="428" y="72" width="150" height="72" rx="9" fill="none" stroke="#2451B7" stroke-width="1.8"></rect>
+            <text x="503" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="#2451B7">FastAPI</text>
+            <text x="503" y="120" text-anchor="middle" font-size="11.5" fill="#2451B7" opacity=".8">:8000 · permission checks</text>
+
+            <rect x="634" y="72" width="150" height="72" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="709" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">SQLite</text>
+            <text x="709" y="120" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".7">disha.db</text>
+
+            <line x1="166" y1="108" x2="216" y2="108" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"></line>
+            <line x1="372" y1="108" x2="422" y2="108" stroke="#2451B7" stroke-width="1.6" marker-end="url(#ar-b)"></line>
+            <line x1="578" y1="108" x2="628" y2="108" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar)"></line>
+
+            <text x="191" y="60" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">cookie sid</text>
+            <text x="191" y="46" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">HttpOnly</text>
+            <text x="397" y="60" text-anchor="middle" font-size="11" fill="#2451B7">rewrites /api/*</text>
+            <text x="397" y="46" text-anchor="middle" font-size="11" fill="#2451B7">same origin</text>
+            <text x="603" y="60" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">query scoped</text>
+            <text x="603" y="46" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">to the user</text>
+
+            <line x1="628" y1="148" x2="176" y2="188" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#ar)"></line>
+            <text x="420" y="184" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">JSON back, only rows this person may see</text>
+
+            <rect x="428" y="220" width="150" height="58" rx="9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4"></rect>
+            <text x="503" y="244" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">OpenAI</text>
+            <text x="503" y="262" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">answers · plans · rails</text>
+
+            <rect x="634" y="220" width="150" height="58" rx="9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4"></rect>
+            <text x="709" y="244" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Qdrant</text>
+            <text x="709" y="262" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">policy vectors</text>
+
+            <line x1="492" y1="146" x2="492" y2="216" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#ar)"></line>
+            <line x1="540" y1="146" x2="690" y2="216" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#ar)"></line>
+            <text x="300" y="244" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">dashed = only on the chat route</text>
+          </svg>
+        </div>
+        <figcaption>Every screen uses the solid path. Only Disha reaches the dashed services, and it never gets its own
+          database connection — it borrows the same permission rules.</figcaption>
+      </figure>
+
+      <p>Authentication is one lookup: the cookie carries a random token, the <code>sessions</code> table maps it to a
+        user row, and that row is passed into every handler. There are no roles in the token and no client-side
+        permission logic — the server decides, every time.</p>
+    </section>
+
+    <section id="who">
+      <h2>Who can see what</h2>
+      <p>This table is the app's core rule. The assistant inherits it exactly; it is not re-implemented for chat.</p>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Record</th><th>Employee</th><th>Manager</th><th>Admin (HR)</th></tr></thead>
+          <tbody>
+            <tr><td>Own attendance, goals, documents</td><td>read + write</td><td>read + write</td><td>everyone's</td></tr>
+            <tr><td>Leave &amp; expense requests</td><td>own, may cancel</td><td>own + team's, approves</td><td>everyone's, approves</td></tr>
+            <tr><td>Payslips</td><td><strong>own only</strong></td><td><strong>own only</strong></td><td>everyone's, creates</td></tr>
+            <tr><td>Team attendance</td><td>—</td><td>—</td><td>everyone's, corrects</td></tr>
+            <tr><td>Directory (name, dept, manager)</td><td>read</td><td>read</td><td>read + edit</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Note the deliberate gap: a manager approves their team's leave but <em>cannot</em> see their team's salary or
+        daily attendance. Approving a request needs the request, not the person's pay.</p>
+    </section>
+
+    <section id="agent">
+      <h2>The Disha agent</h2>
+      <p>A question does not go straight to a language model. It passes a gate, gets classified, and only then
+        touches data — and only the kind of data the question actually needs.</p>
+
+      <figure>
+        <div class="fig-body">
+          <svg viewBox="0 0 900 420" role="img" aria-label="The agent graph: an input rail, then a planner that routes a question to conversational, policy retrieval, or text-to-SQL, then a responder, then an output rail.">
+            <defs>
+              <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="currentColor"></polygon>
+              </marker>
+              <marker id="a2-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="#6D4AFF"></polygon>
+              </marker>
+              <marker id="a2-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="#0F766E"></polygon>
+              </marker>
+              <marker id="a2-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="#C0392B"></polygon>
+              </marker>
+            </defs>
+
+            <rect x="14" y="176" width="118" height="60" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="73" y="202" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Question</text>
+            <text x="73" y="220" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">from one employee</text>
+
+            <rect x="166" y="176" width="112" height="60" rx="9" fill="none" stroke="#C0392B" stroke-width="1.6"></rect>
+            <text x="222" y="199" text-anchor="middle" font-size="13" font-weight="600" fill="#C0392B">Input rail</text>
+            <text x="222" y="217" text-anchor="middle" font-size="11" fill="#C0392B" opacity=".85">NeMo self-check</text>
+
+            <rect x="312" y="176" width="112" height="60" rx="9" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+            <text x="368" y="199" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Planner</text>
+            <text x="368" y="217" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">picks one route</text>
+
+            <rect x="470" y="36" width="170" height="60" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="555" y="60" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Conversational</text>
+            <text x="555" y="78" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">no lookup at all</text>
+
+            <rect x="470" y="176" width="170" height="60" rx="9" fill="none" stroke="#6D4AFF" stroke-width="1.6"></rect>
+            <text x="555" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="#6D4AFF">Policy search</text>
+            <text x="555" y="218" text-anchor="middle" font-size="11" fill="#6D4AFF" opacity=".85">Qdrant · 5 passages</text>
+
+            <rect x="470" y="316" width="170" height="60" rx="9" fill="none" stroke="#0F766E" stroke-width="1.6"></rect>
+            <text x="555" y="340" text-anchor="middle" font-size="13" font-weight="600" fill="#0F766E">Text-to-SQL</text>
+            <text x="555" y="358" text-anchor="middle" font-size="11" fill="#0F766E" opacity=".85">scoped views only</text>
+
+            <rect x="686" y="176" width="104" height="60" rx="9" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+            <text x="738" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Responder</text>
+            <text x="738" y="218" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">gpt-5.5</text>
+
+            <rect x="686" y="286" width="104" height="56" rx="9" fill="none" stroke="#C0392B" stroke-width="1.6"></rect>
+            <text x="738" y="308" text-anchor="middle" font-size="13" font-weight="600" fill="#C0392B">Output rail</text>
+            <text x="738" y="326" text-anchor="middle" font-size="11" fill="#C0392B" opacity=".85">last check</text>
+
+            <rect x="822" y="286" width="64" height="56" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="854" y="312" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Answer</text>
+
+            <line x1="132" y1="206" x2="160" y2="206" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></line>
+            <line x1="278" y1="206" x2="306" y2="206" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></line>
+            <path d="M424 196 C 446 196, 448 66, 464 66" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></path>
+            <line x1="424" y1="206" x2="464" y2="206" stroke="#6D4AFF" stroke-width="1.6" marker-end="url(#a2-p)"></line>
+            <path d="M424 216 C 446 216, 448 346, 464 346" fill="none" stroke="#0F766E" stroke-width="1.6" marker-end="url(#a2-d)"></path>
+            <path d="M640 66 C 664 66, 666 186, 680 196" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></path>
+            <line x1="640" y1="206" x2="680" y2="206" stroke="#6D4AFF" stroke-width="1.6" marker-end="url(#a2-p)"></line>
+            <path d="M640 346 C 664 346, 666 226, 680 216" fill="none" stroke="#0F766E" stroke-width="1.6" marker-end="url(#a2-d)"></path>
+            <line x1="738" y1="236" x2="738" y2="280" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></line>
+            <line x1="790" y1="314" x2="816" y2="314" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></line>
+
+            <path d="M222 176 C 222 120, 200 96, 176 96" fill="none" stroke="#C0392B" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#a2-s)"></path>
+            <text x="150" y="80" text-anchor="middle" font-size="11" fill="#C0392B">blocked → refusal,</text>
+            <text x="150" y="66" text-anchor="middle" font-size="11" fill="#C0392B">nothing is looked up</text>
+
+            <text x="447" y="122" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".75">greeting</text>
+            <text x="447" y="166" text-anchor="middle" font-size="10.5" fill="#6D4AFF">"what's the rule?"</text>
+            <text x="447" y="292" text-anchor="middle" font-size="10.5" fill="#0F766E">"what's my balance?"</text>
+            <text x="368" y="262" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">gpt-5.4-mini</text>
+          </svg>
+        </div>
+        <figcaption>Both rails are NeMo self-checks. The planner's job is mostly to avoid work: small talk never
+          reaches Qdrant or the database.</figcaption>
+      </figure>
+
+      <p>Each answer carries its route and the steps it took, and the chat screen prints them under the reply —
+        <span class="pill p-chat">conversational</span> <span class="pill p-policy">policy</span>
+        <span class="pill p-data">data</span> <span class="pill p-stop">blocked</span> — so nobody has to guess
+        whether a number came from the database or from a document.</p>
+    </section>
+
+    <section id="sandbox">
+      <h2>The SQL sandbox</h2>
+      <p class="lede">Letting a language model write SQL against an HR database is the riskiest idea in this app. One
+        loose query returns everyone's salary. Here is why it can't.</p>
+      <p>The model never sees the real tables. Before its query runs, the connection is given a set of temporary views
+        that <em>already contain only</em> the rows the asking person may see — and the query is checked against a
+        whitelist of those view names.</p>
+
+      <figure>
+        <div class="fig-body">
+          <svg viewBox="0 0 900 330" role="img" aria-label="Model-written SQL passes a validator, runs against temp views filtered to the asking employee, and is blocked from reaching the base tables directly.">
+            <defs>
+              <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="currentColor"></polygon>
+              </marker>
+              <marker id="a3-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <polygon points="0,0 10,5 0,10" fill="#0F766E"></polygon>
+              </marker>
+            </defs>
+
+            <rect x="14" y="112" width="150" height="68" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="89" y="138" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Model writes</text>
+            <text x="89" y="158" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".7">one SELECT</text>
+
+            <rect x="212" y="92" width="188" height="108" rx="9" fill="none" stroke="#C0392B" stroke-width="1.6"></rect>
+            <text x="306" y="118" text-anchor="middle" font-size="13" font-weight="600" fill="#C0392B">Validator</text>
+            <text x="306" y="140" text-anchor="middle" font-size="11" fill="currentColor" opacity=".8">one statement, no DDL</text>
+            <text x="306" y="158" text-anchor="middle" font-size="11" fill="currentColor" opacity=".8">only whitelisted names</text>
+            <text x="306" y="176" text-anchor="middle" font-size="11" fill="currentColor" opacity=".8">LIMIT forced on</text>
+
+            <rect x="452" y="66" width="196" height="160" rx="9" fill="none" stroke="#0F766E" stroke-width="1.8"></rect>
+            <text x="550" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="#0F766E">Temp views</text>
+            <text x="550" y="112" text-anchor="middle" font-size="11" fill="#0F766E" opacity=".9">rebuilt for this person</text>
+            <line x1="470" y1="124" x2="630" y2="124" stroke="#0F766E" stroke-width="1" opacity=".4"></line>
+            <text x="550" y="144" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".85">me · leaves · payslips</text>
+            <text x="550" y="162" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".85">attendance · expenses</text>
+            <text x="550" y="180" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".85">goals · employees</text>
+            <text x="550" y="206" text-anchor="middle" font-size="11" fill="#0F766E">…WHERE user_id = you</text>
+
+            <rect x="700" y="66" width="186" height="160" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="793" y="92" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Base tables</text>
+            <text x="793" y="112" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">every employee's rows</text>
+            <text x="793" y="140" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".85">users (password hashes)</text>
+            <text x="793" y="158" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".85">payslips · leaves · …</text>
+            <text x="793" y="196" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">reachable only through</text>
+            <text x="793" y="212" text-anchor="middle" font-size="11" fill="currentColor" opacity=".6">a view definition</text>
+
+            <line x1="164" y1="146" x2="206" y2="146" stroke="currentColor" stroke-width="1.4" marker-end="url(#a3)"></line>
+            <line x1="400" y1="146" x2="446" y2="146" stroke="#0F766E" stroke-width="1.6" marker-end="url(#a3-d)"></line>
+            <line x1="648" y1="146" x2="694" y2="146" stroke="#0F766E" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#a3-d)"></line>
+
+            <path d="M306 200 C 306 264, 700 264, 760 232" fill="none" stroke="#C0392B" stroke-width="1.5" stroke-dasharray="6 5"></path>
+            <line x1="520" y1="252" x2="548" y2="276" stroke="#C0392B" stroke-width="2"></line>
+            <line x1="548" y1="252" x2="520" y2="276" stroke="#C0392B" stroke-width="2"></line>
+            <text x="534" y="300" text-anchor="middle" font-size="11.5" fill="#C0392B">SELECT * FROM users → refused before it runs</text>
+
+            <text x="185" y="112" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".7">text</text>
+            <text x="423" y="128" text-anchor="middle" font-size="10.5" fill="#0F766E">passes</text>
+          </svg>
+        </div>
+        <figcaption>Three independent layers: the views filter the rows, the validator filters the query, and the row
+          limit caps the result. Defeating one still leaves the other two.</figcaption>
+      </figure>
+
+      <p>Two details matter more than they look. The sandbox takes a connection that is <strong>never reused</strong>,
+        so its temporary views cannot leak into the next request — an early version of this had exactly that bug, and
+        an ordinary API call could have been served the previous person's view. And a regular employee who asks about
+        someone else by id gets an explicit <em>not allowed</em>, rather than silently receiving their own figures,
+        which is how a wrong answer becomes a confident wrong answer.</p>
+
+      <div class="note">
+        <span class="label">What the tests pin down</span>
+        <p><code>backend/test_agent.py</code> asserts that <code>SELECT * FROM users</code>, <code>DROP</code>,
+          <code>PRAGMA</code>, two statements, and <code>sqlite_master</code> are all refused; that an employee
+          querying payslips sees one row and a manager sees their team's leave; and that the real tables are untouched
+          afterwards. It runs without calling OpenAI.</p>
+      </div>
+    </section>
+
+    <section id="data">
+      <h2>Data model</h2>
+      <p>Ten tables, all hanging off <code>users</code>. Anything an employee owns carries a <code>user_id</code>, and
+        that single column is what every permission rule keys on.</p>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Table</th><th>Holds</th><th>Worth knowing</th></tr></thead>
+          <tbody>
+            <tr><td><code>users</code></td><td>People, role, department, <code>manager_id</code></td><td>Self-referencing: the reporting line is one column</td></tr>
+            <tr><td><code>attendance</code></td><td>One row per day worked</td><td>No row means leave, holiday or absence</td></tr>
+            <tr><td><code>leaves</code></td><td>Requests, type, days, status</td><td><code>days</code> counts working days; quotas CL 12 / SL 12 / EL 15, LWP unlimited</td></tr>
+            <tr><td><code>expenses</code></td><td>Claims + receipt bytes</td><td>Same approval path as leave</td></tr>
+            <tr><td><code>payslips</code></td><td>Basic, HRA, allowances, deductions</td><td>Gross and net are computed, never stored</td></tr>
+            <tr><td><code>goals</code>, <code>documents</code></td><td>Per-employee items</td><td>Files live in the database, capped at 7 MB</td></tr>
+            <tr><td><code>holidays</code>, <code>announcements</code></td><td>Company-wide</td><td>Holidays make leave skip those days</td></tr>
+            <tr><td><code>sessions</code></td><td>Login tokens</td><td>Deleted on password change</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A balance is never stored. "9 casual leaves left" is always <code>quota − (approved + pending)</code> computed
+        at read time, which is why a pending request already holds its days.</p>
+    </section>
+
+    <section id="files">
+      <h2>Where things live</h2>
+<pre><b>backend/</b>
+  app/main.py        <b>35 endpoints; the permission rules live here</b>
+  app/db.py          <b>schema, password hashing, working-day maths</b>
+  app/agent.py       <b>the LangGraph graph in the diagram above</b>
+  app/safe_sql.py    <b>per-employee views + query validator</b>
+  app/knowledge.py   <b>policy chunking, embeddings, Qdrant search</b>
+  app/rails.py       <b>NeMo input/output checks</b>
+  app/seed.py        <b>20 dummy employees, Jan 2026 → yesterday</b>
+  test_agent.py      <b>sandbox + routing checks, no API calls</b>
+<b>frontend/</b>
+  app/(app)/*/page.js  <b>one file per screen, incl. disha/</b>
+  components/Shell.js  <b>nav, session, the admin "view employee" filter</b>
+<b>data/policies/*.md</b>  <b>the six documents Disha quotes</b>
+<b>test.mjs</b>            <b>API suite over real HTTP</b>
+</pre>
+      <p>Two rules keep the codebase honest: permission decisions exist in exactly one place per record type, and the
+        assistant calls those same paths rather than its own.</p>
+    </section>
+
+    <section id="run">
+      <h2>Running it</h2>
+<pre>cd backend &amp;&amp; python -m uvicorn app.main:app --reload   <b># API on :8000</b>
+cd frontend &amp;&amp; npm run dev                              <b># app on :3000</b>
+
+python -m app.seed                 <b># 20 employees with a year of records</b>
+python -m app.knowledge --wipe     <b># index data/policies into Qdrant</b>
+python test_agent.py &amp;&amp; node ../test.mjs   <b># both suites</b>
+</pre>
+      <p>Secrets come from <code>backend/.env</code>: <code>OPENAI_API_KEY</code> is required for chat,
+        <code>QDRANT_*</code> for policy answers, <code>LOGFIRE_TOKEN</code> for tracing. Each is optional in the sense
+        that the app degrades rather than crashes — without Qdrant, Disha says it can't find the policy; without a
+        model key, the chat tab reports it isn't set up, and the rest of the app is unaffected.</p>
+      <p>Seeded logins are <code>firstname.lastname@company.com</code> with the password <code>password123</code> —
+        <code>sneha.iyer</code> is a regular employee, <code>rahul.sharma</code> manages six people.</p>
+    </section>
+
+    <section id="next">
+      <h2>Not built yet — and why that's written down</h2>
+      <ul class="plain">
+        <li><strong>Disha cannot act.</strong> It reads. Applying for leave or approving a request from chat needs a
+          confirmation step that doesn't exist yet.</li>
+        <li><strong>No payroll tax engine.</strong> Payslip figures are entered by HR; PF and professional tax are
+          modelled, income tax is not.</li>
+        <li><strong>No rate limit on chat.</strong> Each question costs a handful of model calls, so this belongs in
+          before a wider rollout.</li>
+        <li><strong>No automatic answer-quality checks.</strong> A golden question set with RAGAS-style scoring is the
+          obvious next piece.</li>
+        <li><strong>One server, one file.</strong> SQLite is fine for a few hundred employees; PostgreSQL is a
+          settings change when it isn't.</li>
+      </ul>
+      <p>The sample policies in <code>data/policies/</code> are written to match the app's real behaviour, but they
+        are samples. Replace them with the approved versions before anyone relies on an answer.</p>
+    </section>
+  </main>
+
+  <footer>DISHA HR · Next.js · FastAPI · SQLite · LangGraph · Qdrant · NeMo Guardrails · Logfire</footer>
+</div>
