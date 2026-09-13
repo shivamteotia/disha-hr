@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 
 const PORT = 3999, base = `http://localhost:${PORT}/api`;
 const env = { ...process.env, ADMIN_PASSWORD: 'adminpass1',
-  DATABASE_URL: process.env.TEST_DATABASE_URL || 'sqlite:///disha_test.db' };
+  DATABASE_URL: process.env.TEST_DATABASE_URL || 'sqlite:///disha_test.db',
+  // empty, not absent: backend/.env would otherwise supply a real key and these tests would call OpenAI
+  OPENAI_API_KEY: '' };
 const cwd = new URL('./backend/', import.meta.url);
 if (spawnSync('python', ['-m', 'app.db', '--reset'], { cwd, env, stdio: 'inherit' }).status) process.exit(1);
 const srv = spawn('python', ['-m', 'uvicorn', 'app.main:app', '--port', String(PORT), '--log-level', 'warning'], { cwd, env, stdio: ['ignore', 'ignore', 'inherit'] });
@@ -87,6 +89,16 @@ try {
   assert.equal((await alice('/announcements', 'POST', { title: 'hi' })).status, 403);
   await admin('/announcements', 'POST', { title: 'Hello' });
   assert.equal((await alice('/announcements')).body[0].title, 'Hello');
+
+  // chat is capped per user (8/minute). No OpenAI key here, so every allowed question answers 503 —
+  // the cap is counted first, so the 9th is refused regardless.
+  const chat = (who) => who('/chat', 'POST', { messages: [{ role: 'user', content: 'hi' }] });
+  const codes = [];
+  for (let i = 0; i < 9; i++) codes.push((await chat(alice)).status);
+  assert.deepEqual(codes.slice(0, 8), Array(8).fill(503), `expected 8 allowed, got ${codes}`);
+  assert.equal(codes[8], 429, 'ninth question within a minute is refused');
+  assert.match((await chat(alice)).body.detail, /wait \d+s/, 'refusal says how long to wait');
+  assert.equal((await chat(bob)).status, 503, "one person's limit does not affect anyone else");
 
   assert.equal((await alice('/attendance/check', 'POST')).status, 200);
   assert.equal((await alice('/attendance/check', 'POST')).status, 200);
