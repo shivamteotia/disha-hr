@@ -10,6 +10,7 @@ import datetime as dt
 import os
 import re
 import secrets
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal, Optional
 from urllib.parse import quote
@@ -543,12 +544,31 @@ class ChatIn(BaseModel):
     messages: Annotated[list[ChatMessage], Field(min_length=1, max_length=20)]
 
 
-# ponytail: no per-user rate limit; add one before rollout (each question = 1-6 OpenAI calls)
+# Each question costs several model calls, so cap how many one person can ask.
+# ponytail: in-memory, so the cap is per API process; move the counter to a table if you run more than one worker.
+CHAT_LIMITS = ((8, 60, "minute"), (50, 3600, "hour"))
+_chat_hits: dict[int, list[float]] = {}
+
+
+def check_chat_limit(user_id: int):
+    now = time.monotonic()
+    hits = [t for t in _chat_hits.get(user_id, []) if now - t < CHAT_LIMITS[-1][1]]
+    _chat_hits[user_id] = hits
+    for count, window, unit in CHAT_LIMITS:
+        recent = [t for t in hits if now - t < window]
+        if len(recent) >= count:
+            wait = max(1, int(window - (now - recent[0])))
+            raise HTTPException(429, f"That's {count} questions in a {unit}. Please wait {wait}s before asking Disha again.",
+                                headers={"Retry-After": str(wait)})
+    hits.append(now)
+
+
 @api.post("/chat")
 def chat(body: ChatIn, sid: Annotated[Optional[str], Cookie()] = None):
     from .agent import chat as ask  # lazy: agent imports heavy deps and this module's db helpers
     with engine.begin() as db:  # auth only; don't hold a transaction while waiting on OpenAI
         user = current_user(db, sid)
+    check_chat_limit(user["id"])  # before the key check, so the cap holds even when chat is unconfigured
     if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(503, "Disha isn't set up yet: the server has no OPENAI_API_KEY")
     return ask(dict(user), [m.model_dump() for m in body.messages])

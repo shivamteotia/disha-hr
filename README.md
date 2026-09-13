@@ -20,7 +20,9 @@ node test.mjs                                   # API contract tests on a throwa
 ```
 First API start prints the admin login (`admin@company.com` / random password; or set `ADMIN_PASSWORD`).
 Env: `DATABASE_URL`, `ADMIN_PASSWORD`, `TZ` (attendance uses server time), `HTTPS=1` (Secure cookie behind TLS),
-`API_URL` (frontend → API, default `http://127.0.0.1:8000`).
+`API_URL` (frontend → API, default `http://127.0.0.1:8000`). Keys live in `backend/.env` (see `.env.example`):
+`OPENAI_API_KEY` for chat, `QDRANT_*` for policy answers, `LOGFIRE_TOKEN` and `LANGSMITH_*` for tracing,
+`JUDGE_MODEL` for the evals.
 
 ## Disha assistant (agentic)
 
@@ -36,7 +38,10 @@ question -> input rail -> planner -> conversational          -> responder -> out
   (`app/safe_sql.py`): one SELECT, whitelisted view names, forced row limit, own connection that is
   never pooled. Managers also see their team's leaves and expenses; admins see everything.
 - **Guardrails** (`app/rails.py`, NeMo) screen the question and the answer; both degrade to open if unavailable.
-- **Tracing**: Logfire spans per node, active when `LOGFIRE_TOKEN` is set.
+- **Tracing**: Logfire spans per node (`LOGFIRE_TOKEN`), and LangSmith traces of the same nodes plus every prompt
+  and completion (`LANGSMITH_API_KEY` + `LANGSMITH_TRACING=true`; the OpenAI client is wrapped when the key is set).
+- **Rate limit**: 8 questions a minute and 50 an hour per employee; a refusal says how long to wait.
+  Held in memory, so the cap is per API process — move it to a table before running several workers.
 
 Setup: copy `backend/.env.example` to `backend/.env` and fill in `OPENAI_API_KEY` (plus Qdrant keys for
 policy answers), then index the policies:
@@ -46,6 +51,29 @@ cd backend && python -m app.knowledge --wipe    # embeds data/policies/*.md into
 ```
 
 Checks without OpenAI or Qdrant calls: `cd backend && python test_agent.py`
+
+### Evals (DeepEval)
+`backend/evals/golden.json` holds the golden question set — policy, data, safety and small-talk cases. The harness
+asks them through the **running API**, so it measures the deployed system, and scores two ways:
+
+- **deterministic** — was the right route taken; does a data answer contain the number that `truth_sql` returns from
+  the live database; did a safety question leak anything. No judge, no cost, never flaky.
+- **judged (DeepEval)** — faithfulness, answer relevancy, contextual precision/recall and a GEval correctness check
+  over the policy answers, each with a written reason stored in `evals/report.json`.
+
+```
+cd backend
+pip install -r evals/requirements.txt
+python -m evals.run                 # API must be running on :8000
+python -m evals.run --no-judge      # deterministic half only, no judge calls
+python -m evals.run --from-report   # re-judge saved answers without asking the agent again
+python -m evals.traces --hours 2    # recent LangSmith traces for the same runs
+```
+
+Last run: routes 17/17, data 5/5, safety 3/3; contextual precision 1.00, contextual recall 1.00, faithfulness 0.96,
+correctness 0.91, answer relevancy 0.77. Relevancy reads low because the judge penalises the trailing source tag
+(`… (Leave Policy)`) that we deliberately keep for provenance — the answers themselves are correct and complete. (RAGAS was tried first and dropped — it pins `openai<2`, needs a
+pinned old `langchain-community` to import, and sends `max_tokens`, which the gpt-5 models reject.)
 
 ## Layout
 | Path | What |

@@ -166,7 +166,8 @@
             <tr><td>Models</td><td>OpenAI</td><td><code>gpt-5.5</code> answers; <code>gpt-5.4-mini</code> plans, writes SQL and runs the rails</td></tr>
             <tr><td>Policy search</td><td>Qdrant Cloud + <code>text-embedding-3-small</code></td><td><code>backend/app/knowledge.py</code> — 13 chunks from <code>data/policies/</code></td></tr>
             <tr><td>Guardrails</td><td>NeMo Guardrails</td><td><code>backend/app/rails.py</code> — self-check on the question and on the answer</td></tr>
-            <tr><td>Tracing</td><td>Pydantic Logfire</td><td>A span per node; silent when <code>LOGFIRE_TOKEN</code> is unset</td></tr>
+            <tr><td>Tracing</td><td>Pydantic Logfire + LangSmith</td><td>A span per node, and every prompt; silent when the tokens are unset</td></tr>
+            <tr><td>Evals</td><td>DeepEval</td><td><code>backend/evals/</code> — 17 golden questions judged against the running API</td></tr>
             <tr><td>Tests</td><td>Node + Python, no framework</td><td><code>test.mjs</code> (API over HTTP), <code>backend/test_agent.py</code> (sandbox + routing)</td></tr>
           </tbody>
         </table>
@@ -499,10 +500,12 @@ python test_agent.py &amp;&amp; node ../test.mjs   <b># both suites</b>
           confirmation step that doesn't exist yet.</li>
         <li><strong>No payroll tax engine.</strong> Payslip figures are entered by HR; PF and professional tax are
           modelled, income tax is not.</li>
-        <li><strong>No rate limit on chat.</strong> Each question costs a handful of model calls, so this belongs in
-          before a wider rollout.</li>
-        <li><strong>No automatic answer-quality checks.</strong> A golden question set with RAGAS-style scoring is the
-          obvious next piece.</li>
+        <li><strong>The chat rate limit is per process.</strong> Eight questions a minute and fifty an hour per
+          employee, counted in memory — correct for one API worker, and it needs a shared counter before running
+          several.</li>
+        <li><strong>The eval set is small.</strong> Seventeen golden questions, scored on every run: route, the number
+          in a data answer (checked against the database), safety refusals, and DeepEval's faithfulness, relevancy,
+          contextual precision/recall and correctness. It catches regressions; it is not broad coverage yet.</li>
         <li><strong>One server, one file.</strong> SQLite is fine for a few hundred employees; PostgreSQL is a
           settings change when it isn't.</li>
       </ul>

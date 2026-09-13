@@ -3,6 +3,7 @@
 Ingest (from backend/):  python -m app.knowledge          (add --wipe to recreate the collection)
 Search is used by the agent's retriever node.
 """
+import json
 import os
 import re
 import sys
@@ -17,26 +18,78 @@ except ImportError:
 POLICY_DIR = Path(__file__).resolve().parents[2] / "data" / "policies"
 COLLECTION = os.environ.get("QDRANT_COLLECTION", "disha_policies")
 EMBED_MODEL = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-small")
-EMBED_DIM = 1536  # text-embedding-3-small; 3-large is 3072
-MAX_CHARS = 1500  # chunk size, paragraph aware
+RERANK_MODEL = os.environ.get("OPENAI_FAST_MODEL", "gpt-5.4-mini")
+EMBED_DIM = 1536      # text-embedding-3-small; 3-large is 3072
+MAX_CHARS = 700       # one rule per chunk: bigger chunks dilute the embedding
+CANDIDATES = 12       # fetched from Qdrant, then reranked down to the caller's limit
+
+# Every policy opens with the same disclaimer and an Owner/Version line. That text is generic
+# HR-flavoured boilerplate: it matches almost any question and answers none, so it used to win
+# rank 1 for every query. Drop it before indexing.
+BOILERPLATE = re.compile(r"^\s*(\*Sample policy.*?\*|Owner:.*|Version\s.*|_.*demo.*_)\s*$", re.I | re.M)
 
 
-def chunk(md: str) -> list[str]:
-    """Split on blank lines, then pack paragraphs up to MAX_CHARS, keeping the nearest heading for context."""
+def chunk(md: str, title: str) -> list[str]:
+    """Split a policy into ~MAX_CHARS pieces, each labelled 'Title › Section' so it stands alone."""
+    md = BOILERPLATE.sub("", md)
     chunks, current, heading = [], "", ""
+
+    def label():
+        return f"{title} › {heading}\n" if heading else f"{title}\n"
+
     for para in re.split(r"\n\s*\n", md):
         para = para.strip()
         if not para:
             continue
         if para.startswith("#"):
-            heading = para.lstrip("# ").strip()
-        if len(current) + len(para) > MAX_CHARS and current:
+            new_heading = para.lstrip("# ").strip()
+            if new_heading == title:      # the document's own H1, already in every label
+                continue
+            if current.strip():
+                chunks.append(current.strip())
+                current = ""
+            heading = new_heading
+            continue
+        if len(current) + len(para) > MAX_CHARS and current.strip():
             chunks.append(current.strip())
-            current = f"[{heading}]\n" if heading else ""
-        current += para + "\n\n"
+            current = ""
+        current = (current or label()) + para + "\n\n"
     if current.strip():
         chunks.append(current.strip())
     return chunks
+
+
+def rerank(query: str, hits: list[dict], keep: int = 4, ask=None) -> list[dict]:
+    """Order candidates by usefulness to the question, keeping the best `keep`.
+
+    Fails open: any error, bad JSON or out-of-range index falls back to vector order, because a
+    ranking problem must never stop the assistant answering.
+    """
+    if not hits:
+        return []
+    ask = ask or _ask_model
+    listing = "\n".join(f"[{i}] {h['text'][:400]}" for i, h in enumerate(hits))
+    prompt = (f"Question: {query}\n\nPassages:\n{listing}\n\n"
+              f"Order the passage numbers from most to least useful for answering the question. "
+              f'Reply as JSON: {{"order": [numbers]}}')
+    try:
+        order = json.loads(ask(prompt))["order"]
+        ranked = [hits[i] for i in order if isinstance(i, int) and 0 <= i < len(hits)]
+        if len(ranked) < min(keep, len(hits)):
+            return hits[:keep]
+        return ranked[:keep]
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning("rerank unavailable, using vector order: %s", e)
+        return hits[:keep]
+
+
+def _ask_model(prompt: str) -> str:
+    from openai import OpenAI
+    out = OpenAI(timeout=30).chat.completions.create(
+        model=RERANK_MODEL, messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}, max_completion_tokens=500)
+    return out.choices[0].message.content or ""
 
 
 def _clients():
@@ -57,14 +110,15 @@ def embed(texts: list[str]) -> list[list[float]]:
     return out
 
 
-def search(query: str, limit: int = 5) -> list[dict]:
-    """Return [{text, source, score}] for the closest policy chunks; [] if Qdrant isn't configured."""
+def search(query: str, limit: int = 4) -> list[dict]:
+    """Return [{text, source, score}] for the best policy chunks; [] if Qdrant isn't configured."""
     try:
         openai_client, qdrant = _clients()
         vector = openai_client.embeddings.create(model=EMBED_MODEL, input=query).data[0].embedding
-        hits = qdrant.query_points(collection_name=COLLECTION, query=vector, limit=limit, with_payload=True).points
-        return [{"text": h.payload.get("text", ""), "source": h.payload.get("source", "policy"), "score": round(h.score, 3)}
-                for h in hits]
+        hits = qdrant.query_points(collection_name=COLLECTION, query=vector, limit=CANDIDATES, with_payload=True).points
+        candidates = [{"text": h.payload.get("text", ""), "source": h.payload.get("source", "policy"),
+                       "score": round(h.score, 3)} for h in hits]
+        return rerank(query, candidates, keep=limit)
     except Exception as e:  # noqa: BLE001 - the agent answers without policy context rather than failing
         import logging
         logging.getLogger(__name__).warning("policy search unavailable: %s", e)
@@ -85,9 +139,12 @@ def ingest(wipe: bool = False) -> int:
 
     texts, payloads = [], []
     for f in files:
-        for i, part in enumerate(chunk(f.read_text(encoding="utf-8"))):
+        body = f.read_text(encoding="utf-8")
+        first = next((line for line in body.splitlines() if line.startswith("# ")), "")
+        title = first.lstrip("# ").strip() or f.stem.replace("-", " ").title()
+        for i, part in enumerate(chunk(body, title)):
             texts.append(part)
-            payloads.append({"text": part, "source": f.stem.replace("-", " "), "chunk": i})
+            payloads.append({"text": part, "source": title, "chunk": i})
     vectors = embed(texts)
     qdrant.upsert(COLLECTION, points=[models.PointStruct(id=i, vector=v, payload=p)
                                       for i, (v, p) in enumerate(zip(vectors, payloads))])

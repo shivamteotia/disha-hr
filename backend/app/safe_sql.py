@@ -64,6 +64,10 @@ def views_for(user) -> dict[str, str]:
 SCHEMA_DOC = """Views you may query (each is ALREADY filtered to what this user is allowed to see):
 
 me(id, emp_code, name, email, dept, designation, phone, doj, manager_id, role) - one row: the asking user
+  role is only 'user' or 'admin' - there is NO 'manager' role. Someone is a manager because other
+  employees have manager_id = their id. Never filter on role to find managers; to count a manager's
+  team use employees.manager_id = (SELECT id FROM me), and note the leaves and expenses views already
+  contain the team's rows for a manager, so a plain WHERE status='pending' over them is usually right.
 employees(id, emp_code, name, email, dept, designation, manager_id[, phone, doj, role, active for admins]) - directory
 attendance(id, user_id, employee, date, check_in, check_out) - one row per day worked
 leaves(id, user_id, employee, type, from_date, to_date, days, reason, status) - type: CL/SL/EL/LWP; status: pending/approved/rejected/cancelled
