@@ -1,0 +1,5 @@
+.env
+disha.db
+__pycache__
+*.pyc
+.deepeval
