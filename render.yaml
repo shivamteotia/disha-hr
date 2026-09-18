@@ -1,8 +1,3 @@
-databases:
-  - name: disha-db
-    plan: free
-    postgresMajorVersion: "16"
-
 services:
   - type: web
     name: disha-backend
@@ -15,9 +10,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.7
       - key: DATABASE_URL
-        fromDatabase:
-          name: disha-db
-          property: connectionString
+        sync: false  # set to your Neon connection string after creating the project
       - key: ADMIN_PASSWORD
         generateValue: true
       - key: HTTPS
