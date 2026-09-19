@@ -86,7 +86,9 @@ Leave balance (must match the app, which shows the same numbers):
   used  = SUM(days) for that type where status IN ('approved','pending') and from_date is in the year asked about
           -- pending requests already hold the days; 'rejected' and 'cancelled' never count
   left  = quota - used
-Attendance: one row per day actually worked; there is no row for weekends, holidays, leave or absence."""
+Attendance: one row per day actually worked; there is no row for weekends, holidays, leave or absence.
+  A "miss punch" is a day where check_in or check_out is null (forgot to punch in/out) - count with
+  check_in IS NULL OR check_out IS NULL, filtered to the month/date range asked about."""
 
 
 def check(sql: str) -> str | None:
