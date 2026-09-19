@@ -95,7 +95,8 @@ def _ask_model(prompt: str) -> str:
 def _clients():
     from openai import OpenAI
     from qdrant_client import QdrantClient
-    url, key = os.environ.get("QDRANT_CLUSTER_ENDPOINT"), os.environ.get("QDRANT_API_KEY")
+    url = (os.environ.get("QDRANT_CLUSTER_ENDPOINT") or "").strip()
+    key = (os.environ.get("QDRANT_API_KEY") or "").strip()
     if not url or not key:
         raise RuntimeError("Set QDRANT_CLUSTER_ENDPOINT and QDRANT_API_KEY in backend/.env")
     return OpenAI(), QdrantClient(url=url, api_key=key, timeout=30)
