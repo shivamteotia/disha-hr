@@ -9,7 +9,8 @@ from pathlib import Path
 
 DB = Path(__file__).with_name("disha_agent_test.db")
 DB.unlink(missing_ok=True)
-os.environ["DATABASE_URL"] = f"sqlite:///{DB}"
+# TEST_DATABASE_URL (a *_test Postgres, freshly `python -m app.db --reset`) runs the same checks on Postgres.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{DB}"
 os.environ["ADMIN_PASSWORD"] = "adminpass1"
 # Empty, not removed: backend/.env would otherwise fill these in (dotenv skips keys already set),
 # and this check must never call OpenAI or Qdrant.
@@ -38,11 +39,16 @@ for bad in ["SELECT * FROM users",                     # real table, holds passw
             "PRAGMA table_list",
             "UPDATE leaves SET status='approved'",
             "SELECT * FROM sqlite_master",
-            "WITH x AS (SELECT * FROM users) SELECT * FROM x"]:
+            "SELECT set_config('role', 'postgres', true)",  # would climb back out of the Postgres sandbox role
+            "WITH x AS (SELECT * FROM users) SELECT * FROM x",
+            "WITH users AS (SELECT 1 AS id) SELECT * FROM users, users u2 JOIN sessions ON 1=1",  # CTE must not shadow a real table
+            "SELECT EXTRACT(year FROM date) FROM attendance a JOIN users ON 1=1"]:
     assert safe_sql.check(bad), f"should have been refused: {bad}"
 
 assert safe_sql.check("SELECT type, SUM(days) FROM leaves GROUP BY type") is None
 assert safe_sql.check("SELECT * FROM payslips JOIN me ON 1=1") is None
+assert safe_sql.check("SELECT EXTRACT(MONTH FROM date) m, COUNT(*) FROM attendance GROUP BY 1") is None  # Postgres idiom
+assert safe_sql.check("WITH x AS (SELECT * FROM leaves) SELECT type FROM x") is None
 
 # --- SQL sandbox: rows are scoped per user ---
 def q(user, sql):
@@ -55,13 +61,17 @@ assert q(admin, "SELECT * FROM payslips")["row_count"] == 2, "admin sees all"
 assert q(boss, "SELECT employee FROM leaves")["rows"][0]["employee"] == "alice", "manager sees team leave"
 assert q(bob, "SELECT * FROM leaves")["row_count"] == 0, "peer sees nothing"
 assert q(alice, "SELECT * FROM me")["rows"][0]["name"] == "alice"
+for sneak in ["SELECT * FROM me, users", "SELECT u.pass FROM leaves l, users u",
+              "WITH x AS (SELECT 1) SELECT * FROM x, users"]:  # comma joins get past check(); the authorizer must not
+    r = q(alice, sneak)
+    assert "error" in r and ("prohibited" in r["error"] or "permission denied" in r["error"]) and "rows" not in r, (sneak, r)
 assert "error" in q(alice, "SELECT nope FROM leaves"), "bad column comes back as an error, not a crash"
 assert q(alice, "SELECT * FROM attendance")["sql"].endswith(f"LIMIT {safe_sql.MAX_ROWS}"), "row limit forced"
 with engine.connect() as c:  # the temp views must not survive the request
     try:
         c.exec_driver_sql("SELECT * FROM payslips_view_does_not_exist")
     except Exception:
-        pass
+        c.rollback()  # Postgres aborts the transaction on the error above
     assert c.exec_driver_sql("SELECT COUNT(*) FROM payslips").scalar() == 2, "real table untouched"
 
 # --- graph routing, with the LLM stubbed out ---

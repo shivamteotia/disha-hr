@@ -2,17 +2,22 @@
 
 The model never sees the real tables. For each question we create TEMP VIEWS that already contain only
 the rows the asking employee may see, then allow a single read-only SELECT over those view names.
-Three layers: (1) the views filter rows, (2) the SQL is validated, (3) a row limit is forced.
+Four layers: (1) the views filter rows, (2) the SQL is validated, (3) a row limit is forced,
+(4) the database refuses any read of a real table made straight from the query: an authorizer on SQLite,
+a NOLOGIN role with no table grants (`SET LOCAL ROLE`) on PostgreSQL. Views still work on both because
+their body is checked against the view owner, not the caller.
 
-ponytail: written for SQLite; on PostgreSQL the temp views work the same, but add
-`SET TRANSACTION READ ONLY` and re-check the identifier rules before trusting it there.
+ponytail: the Postgres role needs the app's DB user to hold CREATEROLE (Neon's default owner does); if it
+cannot create/assume the role, run_sql returns an error instead of running unguarded. Not yet added:
+`SET TRANSACTION READ ONLY`, and the role can still read pg_catalog (role names, not data).
 """
 import re
+import sqlite3
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
-from .db import DATABASE_URL, IS_SQLITE
+from .db import DATABASE_URL, IS_SQLITE, md
 
 # Its own engine with NullPool: every sandbox query gets a fresh connection that is closed afterwards.
 # On a pooled connection the temp views would outlive the request and shadow the real tables for
@@ -27,9 +32,42 @@ MAX_SQL = 2000
 BASE = "main." if IS_SQLITE else "public."
 TEMP = "temp" if IS_SQLITE else "pg_temp"
 
-BANNED = re.compile(r"\b(attach|detach|pragma|insert|update|delete|drop|alter|create|grant|revoke|"
+ROLE = "disha_sandbox"  # Postgres only: NOLOGIN, granted SELECT on the temp views and nothing else
+_role_ready = False
+# set_config('role', ...) would let a query climb back out of ROLE
+BANNED = re.compile(r"\b(set_config|attach|detach|pragma|insert|update|delete|drop|alter|create|grant|revoke|"
                     r"vacuum|reindex|load_extension|sqlite_master|sqlite_schema|information_schema)\b", re.I)
 TABLES_IN_SQL = re.compile(r"\b(?:from|join)\s+[\"`\[]?([A-Za-z_][A-Za-z0-9_]*)", re.I)
+# FROM also appears inside EXTRACT(month FROM date), which is not a table read; WITH names are the query's own.
+EXTRACT_FROM = re.compile(r"\bextract\s*\(\s*\w+\s+from\b", re.I)
+CTE_NAME = re.compile(r"\b([A-Za-z_]\w*)\s+as\s*\(", re.I)
+
+
+def _authorizer(views):
+    """SQLite authorizer: a query may read only the temp views. Reads that a view itself triggers (its body
+    selects from the real tables) carry the view's name as `source`, so they pass; a direct read does not."""
+    def auth(action, arg1, arg2, dbname, source):
+        if action == sqlite3.SQLITE_READ and source is None and arg1.lower() not in views:
+            return sqlite3.SQLITE_DENY
+        if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE):
+            return sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_DENY
+    return auth
+
+
+def _ensure_role():
+    """Create the sandbox role once per process and let the app's own DB user assume it."""
+    global _role_ready
+    if _role_ready:
+        return
+    with sandbox_engine.begin() as c:
+        try:
+            c.exec_driver_sql(f"CREATE ROLE {ROLE} NOLOGIN")
+        except Exception:  # noqa: BLE001 - already exists (or another worker just made it)
+            pass
+    with sandbox_engine.begin() as c:
+        c.exec_driver_sql(f"GRANT {ROLE} TO CURRENT_USER")
+    _role_ready = True
 
 
 def views_for(user) -> dict[str, str]:
@@ -105,7 +143,9 @@ def check(sql: str) -> str | None:
     if BANNED.search(s):
         return "Query uses a forbidden keyword"
     allowed = set(views_for({"id": 0, "role": "user"}))
-    used = {t.lower() for t in TABLES_IN_SQL.findall(s)}
+    # a CTE may not reuse a real table name (users...): it would shadow it and let a real read through
+    ctes = {c.lower() for c in CTE_NAME.findall(s)} - (set(md.tables) - allowed)
+    used = {t.lower() for t in TABLES_IN_SQL.findall(EXTRACT_FROM.sub("extract(", s))} - ctes
     if not used <= allowed:
         return f"Query may only read these views: {', '.join(sorted(allowed))} (not {', '.join(sorted(used - allowed))})"
     return None
@@ -122,15 +162,25 @@ def run_sql(user, sql: str) -> dict:
     views = views_for(user)
     conn = sandbox_engine.connect()
     try:
+        if not IS_SQLITE:
+            _ensure_role()
         for name, body in views.items():
             conn.exec_driver_sql(f"DROP VIEW IF EXISTS {TEMP}.{name}")
             conn.exec_driver_sql(f"CREATE TEMP VIEW {name} AS {body}")
+        if IS_SQLITE:  # views are built; from here on only the user's query runs
+            conn.connection.driver_connection.set_authorizer(_authorizer(views))
+        else:
+            for name in views:
+                conn.exec_driver_sql(f"GRANT SELECT ON {name} TO {ROLE}")
+            conn.exec_driver_sql(f"SET LOCAL ROLE {ROLE}")  # undone by the rollback in finally
         result = conn.execute(text(s))
         rows = [dict(r) for r in result.mappings().fetchmany(MAX_ROWS)]
         return {"sql": s, "columns": list(result.keys()), "row_count": len(rows), "rows": rows}
     except Exception as e:  # noqa: BLE001 - the message goes back to the model so it can retry
         return {"error": f"{type(e).__name__}: {str(e)[:300]}", "sql": s}
     finally:
+        if IS_SQLITE:
+            conn.connection.driver_connection.set_authorizer(None)
         for name in views:  # belt and braces: the connection is discarded anyway
             try:
                 conn.exec_driver_sql(f"DROP VIEW IF EXISTS {TEMP}.{name}")
