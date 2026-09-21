@@ -28,6 +28,7 @@ from langgraph.graph import END, StateGraph  # noqa: E402
 from openai import OpenAI  # noqa: E402
 
 from . import knowledge, rails  # noqa: E402
+from .db import IS_SQLITE  # noqa: E402
 from .safe_sql import SCHEMA_DOC, run_sql  # noqa: E402
 
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")              # answering
@@ -122,10 +123,14 @@ def retrieve(state: State) -> State:
 def query_data(state: State) -> State:
     """Write a scoped SELECT, run it, and retry once with the error message if it fails."""
     today = dt.date.today().isoformat()
+    dialect = "SQLite" if IS_SQLITE else "PostgreSQL"
+    date_part_example = "strftime('%Y-%m', date)" if IS_SQLITE else "to_char(date, 'YYYY-MM')"
     ask_sql = lambda extra: _ask(f"""{SCHEMA_DOC}
 
-Today is {today}. Write ONE SQLite SELECT answering the request. Prefer aggregates over dumping rows.
-Never invent columns. Reply as JSON: {{"sql": "SELECT ..."}}
+Today is {today}. Write ONE {dialect} SELECT answering the request. Prefer aggregates over dumping rows.
+Never invent columns. date/from_date/to_date/due columns are native DATE values, not text - use date
+functions (e.g. {date_part_example}), never substr/string slicing on them.
+Reply as JSON: {{"sql": "SELECT ..."}}
 
 REQUEST: {state['query']}{extra}""", FAST_MODEL, json_mode=True)
 
