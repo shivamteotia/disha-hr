@@ -41,8 +41,9 @@ for bad in ["SELECT * FROM users",                     # real table, holds passw
             "SELECT * FROM sqlite_master",
             "SELECT set_config('role', 'postgres', true)",  # would climb back out of the Postgres sandbox role
             "WITH x AS (SELECT * FROM users) SELECT * FROM x",
-            "WITH users AS (SELECT 1 AS id) SELECT * FROM users, users u2 JOIN sessions ON 1=1",  # CTE must not shadow a real table
-            "SELECT EXTRACT(year FROM date) FROM attendance a JOIN users ON 1=1"]:
+            "WITH users AS (SELECT 1 AS id) SELECT * FROM users",  # CTE must not shadow a real table
+            "SELECT EXTRACT(year FROM date) FROM attendance a JOIN users ON 1=1",
+            "WITH RECURSIVE c AS (SELECT 1 AS n UNION ALL SELECT n+1 FROM c) SELECT count(*) FROM c"]:  # unbounded recursion
     assert safe_sql.check(bad), f"should have been refused: {bad}"
 
 assert safe_sql.check("SELECT type, SUM(days) FROM leaves GROUP BY type") is None

@@ -36,7 +36,7 @@ ROLE = "disha_sandbox"  # Postgres only: NOLOGIN, granted SELECT on the temp vie
 _role_ready = False
 # set_config('role', ...) would let a query climb back out of ROLE
 BANNED = re.compile(r"\b(set_config|attach|detach|pragma|insert|update|delete|drop|alter|create|grant|revoke|"
-                    r"vacuum|reindex|load_extension|sqlite_master|sqlite_schema|information_schema)\b", re.I)
+                    r"vacuum|reindex|load_extension|sqlite_master|sqlite_schema|information_schema|recursive)\b", re.I)
 TABLES_IN_SQL = re.compile(r"\b(?:from|join)\s+[\"`\[]?([A-Za-z_][A-Za-z0-9_]*)", re.I)
 # FROM also appears inside EXTRACT(month FROM date), which is not a table read; WITH names are the query's own.
 EXTRACT_FROM = re.compile(r"\bextract\s*\(\s*\w+\s+from\b", re.I)
@@ -49,7 +49,7 @@ def _authorizer(views):
     def auth(action, arg1, arg2, dbname, source):
         if action == sqlite3.SQLITE_READ and source is None and arg1.lower() not in views:
             return sqlite3.SQLITE_DENY
-        if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE):
+        if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION):
             return sqlite3.SQLITE_OK
         return sqlite3.SQLITE_DENY
     return auth
