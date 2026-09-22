@@ -50,6 +50,7 @@ assert safe_sql.check("SELECT type, SUM(days) FROM leaves GROUP BY type") is Non
 assert safe_sql.check("SELECT * FROM payslips JOIN me ON 1=1") is None
 assert safe_sql.check("SELECT EXTRACT(MONTH FROM date) m, COUNT(*) FROM attendance GROUP BY 1") is None  # Postgres idiom
 assert safe_sql.check("WITH x AS (SELECT * FROM leaves) SELECT type FROM x") is None
+assert safe_sql.check("WITH totals(dept, c) AS (SELECT dept, COUNT(*) FROM employees GROUP BY dept) SELECT * FROM totals") is None
 
 # --- SQL sandbox: rows are scoped per user ---
 def q(user, sql):

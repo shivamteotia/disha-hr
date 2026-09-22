@@ -40,7 +40,8 @@ BANNED = re.compile(r"\b(set_config|attach|detach|pragma|insert|update|delete|dr
 TABLES_IN_SQL = re.compile(r"\b(?:from|join)\s+[\"`\[]?([A-Za-z_][A-Za-z0-9_]*)", re.I)
 # FROM also appears inside EXTRACT(month FROM date), which is not a table read; WITH names are the query's own.
 EXTRACT_FROM = re.compile(r"\bextract\s*\(\s*\w+\s+from\b", re.I)
-CTE_NAME = re.compile(r"\b([A-Za-z_]\w*)\s+as\s*\(", re.I)
+# A CTE may declare its output columns right after its name: WITH cnt(n) AS (...).
+CTE_NAME = re.compile(r"\b([A-Za-z_]\w*)\s*(?:\([^()]*\))?\s+as\s*\(", re.I)
 
 
 def _authorizer(views):
@@ -180,7 +181,10 @@ def run_sql(user, sql: str) -> dict:
         return {"error": f"{type(e).__name__}: {str(e)[:300]}", "sql": s}
     finally:
         if IS_SQLITE:
-            conn.connection.driver_connection.set_authorizer(None)
+            try:
+                conn.connection.driver_connection.set_authorizer(None)
+            except Exception:  # noqa: BLE001 - connection may already be broken
+                pass
         for name in views:  # belt and braces: the connection is discarded anyway
             try:
                 conn.exec_driver_sql(f"DROP VIEW IF EXISTS {TEMP}.{name}")
