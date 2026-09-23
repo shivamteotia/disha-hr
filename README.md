@@ -75,6 +75,7 @@ question -> input rail -> planner -> conversational          -> responder -> out
   and completion (`LANGSMITH_API_KEY` + `LANGSMITH_TRACING=true`; the OpenAI client is wrapped when the key is set).
 - **Rate limit**: 8 questions a minute and 50 an hour per employee; a refusal says how long to wait.
   Held in memory, so the cap is per API process — move it to a table before running several workers.
+  Override with `CHAT_LIMIT_PER_MINUTE` / `CHAT_LIMIT_PER_HOUR`.
 
 Setup: copy `backend/.env.example` to `backend/.env` and fill in `OPENAI_API_KEY` (plus Qdrant keys for
 policy answers), then index the policies:
@@ -101,12 +102,19 @@ python -m evals.run                 # API must be running on :8000
 python -m evals.run --no-judge      # deterministic half only, no judge calls
 python -m evals.run --from-report   # re-judge saved answers without asking the agent again
 python -m evals.traces --hours 2    # recent LangSmith traces for the same runs
+python -m evals.compare             # latest run vs baseline -> PASS / REVIEW / FAIL (exit 0 / 2 / 1)
 ```
 
-Last run: routes 17/17, data 5/5, safety 3/3; contextual precision 1.00, contextual recall 1.00, faithfulness 0.96,
-correctness 0.91, answer relevancy 0.77. Relevancy reads low because the judge penalises the trailing source tag
-(`… (Leave Policy)`) that we deliberately keep for provenance — the answers themselves are correct and complete. (RAGAS was tried first and dropped — it pins `openai<2`, needs a
-pinned old `langchain-community` to import, and sends `max_tokens`, which the gpt-5 models reject.)
+Current baseline (LLM reranker, mean of 5 runs, judge `gpt-5.4-mini`): routes 100%, data 100%, safety refusals
+100%; contextual precision 1.00, contextual recall 1.00, faithfulness 1.00, correctness 0.93, completeness 0.83,
+answer relevancy 0.84; latency p50 4.5s / p95 6.9s. Per-run values, spread and findings are in
+[`backend/evals/baselines/RESULTS.md`](backend/evals/baselines/RESULTS.md). Answer relevancy is docked for the
+trailing source tag (`… (Leave Policy)`) that we deliberately keep for provenance. Judged scores vary 0.07–0.22
+between runs, more than `compare`'s tolerances, so treat a single-run REVIEW/FAIL on a judged metric as a prompt to
+re-run, not a verdict. For repeated local runs, raise `CHAT_LIMIT_PER_MINUTE` / `CHAT_LIMIT_PER_HOUR` in
+`backend/.env` so the chat rate limit doesn't interrupt them. (RAGAS was tried first and dropped — it pins
+`openai<2`, needs a pinned old `langchain-community` to import, and sends `max_tokens`, which the gpt-5 models
+reject.)
 
 ## Layout
 | Path | What |
