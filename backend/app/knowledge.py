@@ -3,6 +3,7 @@
 Ingest (from backend/):  python -m app.knowledge          (add --wipe to recreate the collection)
 Search is used by the agent's retriever node.
 """
+import functools
 import json
 import os
 import re
@@ -18,7 +19,12 @@ except ImportError:
 POLICY_DIR = Path(__file__).resolve().parents[2] / "data" / "policies"
 COLLECTION = os.environ.get("QDRANT_COLLECTION", "disha_policies")
 EMBED_MODEL = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-small")
-RERANK_MODEL = os.environ.get("OPENAI_FAST_MODEL", "gpt-5.4-mini")
+# gpt-4.1-mini: full recall on the planner's rewritten queries and ~0.25s faster than gpt-5.4-mini (non-reasoning)
+RERANK_MODEL = os.environ.get("OPENAI_RERANK_MODEL", "gpt-4.1-mini")
+# llm = rerank() via RERANK_MODEL (default); flashrank = local cross-encoder - ~0.3s faster but dropped the
+# answering chunk on rewritten queries (pol-office-days, pol-gift-limit in evals/baselines/RESULTS.md)
+RERANKER = os.environ.get("RERANKER", "llm")
+FLASHRANK_MODEL = os.environ.get("FLASHRANK_MODEL", "ms-marco-MiniLM-L-12-v2")
 EMBED_DIM = 1536      # text-embedding-3-small; 3-large is 3072
 MAX_CHARS = 700       # one rule per chunk: bigger chunks dilute the embedding
 CANDIDATES = 12       # fetched from Qdrant, then reranked down to the caller's limit
@@ -60,9 +66,11 @@ def chunk(md: str, title: str) -> list[str]:
 
 
 def rerank(query: str, hits: list[dict], keep: int = 4, ask=None) -> list[dict]:
-    """Order candidates by usefulness to the question, keeping the best `keep`.
+    """Keep only the candidates that help answer the question, most useful first, at most `keep`.
 
-    Fails open: any error, bad JSON or out-of-range index falls back to vector order, because a
+    Dropping the off-topic passages (rather than always padding to `keep`) is what keeps the answer
+    model's context on-topic - measured as contextual relevancy in evals/.
+    Fails open: any error, bad JSON or no usable index falls back to vector order, because a
     ranking problem must never stop the assistant answering.
     """
     if not hits:
@@ -70,36 +78,71 @@ def rerank(query: str, hits: list[dict], keep: int = 4, ask=None) -> list[dict]:
     ask = ask or _ask_model
     listing = "\n".join(f"[{i}] {h['text'][:400]}" for i, h in enumerate(hits))
     prompt = (f"Question: {query}\n\nPassages:\n{listing}\n\n"
-              f"Order the passage numbers from most to least useful for answering the question. "
+              f"List the numbers of the passages needed to answer the question, most useful first. "
+              f"Leave out passages that are only about the same topic but don't help answer it. "
               f'Reply as JSON: {{"order": [numbers]}}')
     try:
         order = json.loads(ask(prompt))["order"]
-        ranked = [hits[i] for i in order if isinstance(i, int) and 0 <= i < len(hits)]
-        if len(ranked) < min(keep, len(hits)):
-            return hits[:keep]
-        return ranked[:keep]
+        ranked = list({i: hits[i] for i in order if isinstance(i, int) and 0 <= i < len(hits)}.values())
+        return ranked[:keep] or hits[:keep]
     except Exception as e:  # noqa: BLE001
         import logging
         logging.getLogger(__name__).warning("rerank unavailable, using vector order: %s", e)
         return hits[:keep]
 
 
+def flash_rerank(query: str, hits: list[dict], keep: int = 4, ranker=None) -> list[dict]:
+    """Local cross-encoder (FlashRank, no API call): keep the best passage plus any scoring at least
+    half as well, at most `keep`. Relative, not a fixed cutoff: the right passage scores 0.99 for one
+    question and 0.006 for another, so only the ratio within a question means anything.
+    Fails open to vector order, like rerank()."""
+    if not hits:
+        return []
+    try:
+        from flashrank import RerankRequest
+        scored = (ranker or _flashranker()).rerank(
+            RerankRequest(query=query, passages=[{"id": i, "text": h["text"]} for i, h in enumerate(hits)]))
+        top = scored[0]["score"]
+        return [hits[s["id"]] for s in scored if s["score"] >= top / 2][:keep]
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning("flashrank unavailable, using vector order: %s", e)
+        return hits[:keep]
+
+
+_ranker = None
+
+
+def _flashranker():
+    global _ranker
+    if _ranker is None:  # loads the ONNX model once per process (downloaded on first use)
+        import tempfile
+        from flashrank import Ranker
+        _ranker = Ranker(model_name=FLASHRANK_MODEL, cache_dir=str(Path(tempfile.gettempdir()) / "flashrank"))
+    return _ranker
+
+
 def _ask_model(prompt: str) -> str:
-    from openai import OpenAI
-    out = OpenAI(timeout=30).chat.completions.create(
+    out = _openai().chat.completions.create(
         model=RERANK_MODEL, messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"}, max_completion_tokens=500)
     return out.choices[0].message.content or ""
 
 
-def _clients():
+@functools.cache
+def _openai():
     from openai import OpenAI
+    return OpenAI(timeout=30)
+
+
+@functools.cache  # one pair per process: rebuilding them cost ~0.9s per search (TLS + Qdrant version check)
+def _clients():
     from qdrant_client import QdrantClient
     url = (os.environ.get("QDRANT_CLUSTER_ENDPOINT") or "").strip()
     key = (os.environ.get("QDRANT_API_KEY") or "").strip()
     if not url or not key:
         raise RuntimeError("Set QDRANT_CLUSTER_ENDPOINT and QDRANT_API_KEY in backend/.env")
-    return OpenAI(), QdrantClient(url=url, api_key=key, timeout=30)
+    return _openai(), QdrantClient(url=url, api_key=key, timeout=30)
 
 
 def embed(texts: list[str]) -> list[list[float]]:
@@ -119,7 +162,7 @@ def search(query: str, limit: int = 4) -> list[dict]:
         hits = qdrant.query_points(collection_name=COLLECTION, query=vector, limit=CANDIDATES, with_payload=True).points
         candidates = [{"text": h.payload.get("text", ""), "source": h.payload.get("source", "policy"),
                        "score": round(h.score, 3)} for h in hits]
-        return rerank(query, candidates, keep=limit)
+        return (flash_rerank if RERANKER == "flashrank" else rerank)(query, candidates, keep=limit)
     except Exception as e:  # noqa: BLE001 - the agent answers without policy context rather than failing
         import logging
         logging.getLogger(__name__).warning("policy search unavailable: %s", e)

@@ -45,12 +45,15 @@ pip install -r evals/requirements.txt
 python -m evals.run                 # API must be running on :8000; golden set in evals/golden.json
 python -m evals.run --no-judge      # deterministic checks only, no judge/LLM calls
 python -m evals.run --from-report   # re-judge saved answers without re-asking the agent
+python -m evals.run --baseline --label main   # bless a run as evals/baselines/baseline.json
+python -m evals.compare             # latest run vs baseline -> PASS / REVIEW / FAIL (exit 0/2/1)
+python -m evals.test_compare        # verdict-logic self-check, no API or judge
 python -m evals.traces --hours 2    # recent LangSmith traces for the same runs
 ```
 
 Env vars live in `backend/.env` (copy from `backend/.env.example`): `DATABASE_URL`, `ADMIN_PASSWORD`, `TZ`,
 `HTTPS` (Secure cookie behind TLS), `API_URL` (frontend proxy target), `OPENAI_API_KEY`, `QDRANT_*`,
-`LOGFIRE_TOKEN`, `LANGSMITH_*`, `JUDGE_MODEL`.
+`LOGFIRE_TOKEN`, `LANGSMITH_*`, `GROQ_API_KEY` + `JUDGE_MODEL` (eval judge).
 
 ## Architecture
 
@@ -65,7 +68,8 @@ there's no migration tool, tables are created on first start via `init()`.
 `manager_id` is referenced by others, so "am I this person's manager" is a query, not a role. Permission
 checks live inline in each route in `main.py`, not in a separate authorization layer.
 
-**Frontend** talks to the API only through `frontend/lib.js`'s `api()` helper, which calls same-origin `/api/*`
+**Frontend** talks to the API only through `frontend/lib.js`'s `api()` helper (and `apiStream()` for Disha's
+NDJSON stream), which calls same-origin `/api/*`
 — `next.config.mjs` rewrites that to `API_URL` (default `http://127.0.0.1:8000`) so the session cookie stays
 same-origin even from phones on the LAN. There's no client-side data-fetching library; `useLoad()` in `lib.js`
 is the shared "fetch on mount / reload" hook. Routes live under `frontend/app/(app)/<module>/page.js`, one
@@ -74,20 +78,34 @@ page per HR module (attendance, leaves, expenses, payslips, goals, documents, em
 
 **Disha assistant** (`backend/app/agent.py`, LangGraph) routes a question through:
 ```
-question -> input rail -> planner -> conversational          -> responder -> output rail -> answer
-                                  -> policy  (Qdrant RAG)    -^
-                                  -> data    (text-to-SQL)   -^
+question -> input rail ┐                                        (graph: gathers context)
+         -> planner    ┘-> conversational ──────────┐
+                         -> policy  (Qdrant RAG)    ├─> responder (streamed) -> output rail -> done
+                         -> data    (text-to-SQL)  ─┘
 ```
+- The input rail and planner run **concurrently** (`guard_and_plan`); a refusal discards the plan.
 - The **planner** picks the route so small talk skips retrieval entirely.
+- The answer **streams**: `POST /api/chat/stream` returns NDJSON — `{"delta"}`*, optional `{"replace"}`, then
+  `{"done"}` (same payload as `/api/chat`) or `{"error"}`. The output rail checks the *finished* answer and a
+  block swaps the shown text via `replace` — so a blocked answer is visible for ~1s (the `ponytail:` note in
+  `agent._run`). `/api/chat` runs the identical path and just returns the final `done` payload.
+- Models: `OPENAI_MODEL` answers (default `gpt-5.4-mini`, first token ~0.8s vs ~1.3s on gpt-5.5),
+  `OPENAI_FAST_MODEL` plans and writes SQL, `OPENAI_RERANK_MODEL` reranks (default `gpt-4.1-mini`).
 - The **policy** route embeds and searches `data/policies/*.md` in Qdrant (OpenAI embeddings); reindex with
-  `python -m app.knowledge --wipe`.
+  `python -m app.knowledge --wipe`. 12 candidates are reranked down to the ones that actually answer the
+  question (not padded back to 4 — padding is what drove contextual relevancy down). `RERANKER=llm` (default)
+  or `flashrank` (local ONNX cross-encoder, ~0.3s faster, but it dropped the answering chunk on the planner's
+  rewritten queries — see `evals/baselines/RESULTS.md`); both fail open to vector order. API/Qdrant clients
+  are cached per process (`knowledge._clients`) and warmed at startup (`agent.warm()`).
 - The **data** route generates SQL but only against **temp views already scoped to the asking employee**
   (`backend/app/safe_sql.py`) — one SELECT, whitelisted view names, forced row limit, a connection that is
   never pooled. This is the load-bearing security boundary for the agent: it must never gain access to raw
   tables or write access. Managers' views additionally expose their team's leaves/expenses; admins see
   everything.
 - **Guardrails** (`backend/app/rails.py`, NeMo) screen both the question and the answer, and degrade to open
-  (not fail-closed) if the guardrail service is unavailable.
+  (not fail-closed) if the guardrail service is unavailable or exceeds `RAIL_TIMEOUT`. Every NeMo call runs on
+  one dedicated event-loop thread: NeMo's async clients bind to the first loop that uses them, and calling
+  the sync `generate()` from a new thread per turn hung the second request.
 - **Tracing** is dual: Logfire spans per graph node (`LOGFIRE_TOKEN`) and LangSmith traces of the same nodes
   plus every prompt/completion (`LANGSMITH_API_KEY` + `LANGSMITH_TRACING=true`; the OpenAI client is wrapped
   when the key is set).
@@ -97,8 +115,14 @@ question -> input rail -> planner -> conversational          -> responder -> out
 **Evals** (`backend/evals/`) hit the *running* API rather than calling the agent in-process, so they measure
 the deployed system. `evals/golden.json` is the question set; scoring is deterministic (route taken, does a
 data answer contain the number `truth_sql` returns from the live DB, does a safety question leak anything —
-no judge, never flaky) plus DeepEval-judged metrics (faithfulness, answer relevancy, contextual
-precision/recall, GEval correctness) written to `evals/report.json` with reasons. RAGAS was tried and dropped
+no judge, never flaky) plus DeepEval-judged metrics written to `evals/report.json` with reasons: RAG triad,
+contextual precision/recall, GEval correctness/completeness (policy), protected-info + PII leakage (safety),
+scope adherence (scope), toxicity (all). The judge is `JUDGE_MODEL`: an OpenAI model name, or `groq/<model>` to judge on Groq (`GROQ_API_KEY`),
+via a small `DeepEvalBaseLLM` subclass in `run.py` using the `openai` SDK pointed at Groq's endpoint. Each full
+run also writes a flattened snapshot to `evals/baselines/`; `evals.compare` diffs it against `baseline.json` with
+per-metric rules (safety = gate → FAIL, quality/latency/reliability = guardrail → REVIEW) and exits 0/1/2 for CI.
+Keep the baseline and candidate on the same judge model — scores from different judges aren't comparable.
+RAGAS was tried and dropped
 (pins `openai<2`, needs an old pinned `langchain-community`, sends `max_tokens` which gpt-5 models reject) —
 don't reintroduce it without checking those constraints still apply.
 
@@ -116,7 +140,7 @@ don't reintroduce it without checking those constraints still apply.
 | `backend/test_agent.py` | SQL sandbox + routing checks (no OpenAI calls) |
 | `data/policies/*.md` | company policies the policy route answers from (sample content) |
 | `frontend/app/(app)/*/page.js` | one page per HR module |
-| `frontend/lib.js` | `api()` fetch wrapper, `useLoad()`, small formatting helpers |
+| `frontend/lib.js` | `api()` fetch wrapper, `apiStream()` NDJSON reader, `useLoad()`, small formatting helpers |
 | `test.mjs` | HTTP contract tests: access control, approvals, leave rules |
 
 ## Modules and permissions

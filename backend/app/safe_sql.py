@@ -46,9 +46,16 @@ CTE_NAME = re.compile(r"\b([A-Za-z_]\w*)\s*(?:\([^()]*\))?\s+as\s*\(", re.I)
 
 def _authorizer(views):
     """SQLite authorizer: a query may read only the temp views. Reads that a view itself triggers (its body
-    selects from the real tables) carry the view's name as `source`, so they pass; a direct read does not."""
+    selects from the real tables) carry the view's name as `source`, so they pass; a direct read does not.
+    Exception: once SQLite flattens a view into the query (e.g. `WHERE user_id = (SELECT id FROM me)`), it
+    reads the base table's rowid with an empty column name and no source. That read returns no column data,
+    so it is allowed - but only on tables the views themselves read, so `SELECT count(*) FROM me, sessions`
+    still can't count a table no view exposes."""
+    view_tables = {t.lower() for body in views.values() for t in re.findall(r"\bmain\.(\w+)", body)}
+
     def auth(action, arg1, arg2, dbname, source):
-        if action == sqlite3.SQLITE_READ and source is None and arg1.lower() not in views:
+        if action == sqlite3.SQLITE_READ and source is None and arg1.lower() not in views \
+                and not (arg2 == "" and arg1.lower() in view_tables):
             return sqlite3.SQLITE_DENY
         if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION):
             return sqlite3.SQLITE_OK

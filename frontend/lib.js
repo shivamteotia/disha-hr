@@ -9,6 +9,25 @@ export async function api(path, method = 'GET', body) {
   return d;
 }
 
+// POST that reads an NDJSON stream, calling onEvent(obj) per line as it arrives; resolves when the stream ends
+export async function apiStream(path, body, onEvent) {
+  const r = await fetch('/api' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) {
+    const d = await r.json().catch(() => null);
+    if (r.status === 401 && location.pathname !== '/login') location.href = '/login';
+    throw new Error(d?.detail || r.statusText);
+  }
+  const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const lines = (buf + value).split('\n');
+    buf = lines.pop(); // a line can arrive split across chunks
+    for (const line of lines) if (line.trim()) onEvent(JSON.parse(line));
+  }
+}
+
 export const money = (n) => Number(n || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 export const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD, local
 export const thisMonth = () => today().slice(0, 7);

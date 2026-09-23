@@ -6,5 +6,6 @@ openai>=3.6
 langgraph>=1.0          # Disha agent graph
 nemoguardrails>=0.24    # input/output rails
 qdrant-client>=1.19     # policy vector store
+flashrank>=0.2.10       # only needed when RERANKER=flashrank (local ONNX cross-encoder)
 logfire>=5.0            # tracing (no-op without LOGFIRE_TOKEN)
 psycopg[binary]>=3.2    # only needed when DATABASE_URL points at PostgreSQL

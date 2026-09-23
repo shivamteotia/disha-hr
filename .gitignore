@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .venv/
 backend/evals/report*.json
+backend/evals/baselines/candidate.json
 
 # data — contains password hashes and employee records; recreate with `python -m app.seed`
 *.db

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/components/Shell';
-import { api } from '@/lib';
+import { apiStream } from '@/lib';
 
 const SUGGESTIONS = ['How many leaves do I have left?', 'How much notice do I need for earned leave?',
   'Show my attendance this month', 'When is the next holiday?'];
@@ -22,8 +22,18 @@ export default function Disha() {
     try {
       // failed turns are shown but never sent back as history
       const history = next.filter((m) => !m.error).slice(-20).map(({ role, content }) => ({ role, content }));
-      const { reply, route, trace, sources } = await api('/chat', 'POST', { messages: history });
-      setMsgs([...next, { role: 'assistant', content: reply, meta: { route, trace, sources } }]);
+      let content = '';
+      const show = (meta) => setMsgs([...next, { role: 'assistant', content, meta }]);
+      await apiStream('/chat/stream', { messages: history }, (e) => {
+        if (e.error) throw new Error(e.error);
+        if (e.delta) content += e.delta;
+        if (e.replace) content = e.replace; // input refused, or the final check withheld the answer
+        if (e.done) {
+          content = e.done.reply;
+          return show({ route: e.done.route, trace: e.done.trace, sources: e.done.sources });
+        }
+        show();
+      });
     } catch (e) {
       setMsgs([...next, { role: 'assistant', content: `Sorry, something went wrong: ${e.message}`, error: true }]);
     } finally { setBusy(false); }
@@ -46,7 +56,7 @@ export default function Disha() {
             {m.meta.sources?.length > 0 && ` · policy: ${m.meta.sources.join(', ')}`}
           </div>}
         </div>)}
-        {busy && <div className="bubble assistant m">Disha is thinking…</div>}
+        {busy && msgs.at(-1)?.role === 'user' && <div className="bubble assistant m">Disha is thinking…</div>}
         <div ref={end} />
       </div>
       <form className="row" style={{ marginTop: 12, flexWrap: 'nowrap' }} onSubmit={(e) => { e.preventDefault(); send(input); }}>

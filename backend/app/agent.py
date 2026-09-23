@@ -7,11 +7,15 @@
 The planner decides whether a lookup is needed at all, so small talk never touches retrieval.
 Data questions go through safe_sql, which only exposes views already scoped to the asking employee.
 """
+import contextvars
 import datetime as dt
 import functools
 import json
 import operator
 import os
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated, TypedDict
 
@@ -31,7 +35,7 @@ from . import knowledge, rails  # noqa: E402
 from .db import IS_SQLITE  # noqa: E402
 from .safe_sql import SCHEMA_DOC, run_sql  # noqa: E402
 
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")              # answering
+MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")             # answering: first token ~0.8s vs 1.3s on gpt-5.5
 FAST_MODEL = os.environ.get("OPENAI_FAST_MODEL", "gpt-5.4-mini")  # planning + SQL writing
 MAX_CONTEXT_CHARS = 12000
 
@@ -150,7 +154,7 @@ REQUEST: {state['query']}{extra}""", FAST_MODEL, json_mode=True)
     return {"result": result, "trace": [step]}
 
 
-def respond(state: State) -> State:
+def _answer_prompt(state: State) -> str:
     user = state["user"]
     parts = [f"""You are Disha, the HR assistant inside this company's DISHA HR app.
 Today is {dt.date.today():%A, %d %B %Y}. You are talking to {user['name']} (role: {user['role']}).
@@ -183,41 +187,118 @@ LATEST MESSAGE: "{_question(state)}\""""]
         parts.append(f"HR DATA LOOKUP FAILED: {r['error']}. Say you couldn't look it up." if "error" in r
                      else f"HR DATA (already limited to what this user may see):\n{json.dumps(r['rows'], default=str)[:MAX_CONTEXT_CHARS]}")
 
-    with logfire.span("respond"):
-        answer = _ask("\n\n".join(parts), MODEL)
-    return {"answer": answer, "trace": ["Answer written"]}
+    return "\n\n".join(parts)
 
 
-def guard_output(state: State) -> State:
-    with logfire.span("guard output"):
-        replacement = rails.check_output(_question(state), state.get("answer", ""))
-    return {"answer": replacement, "trace": ["Answer blocked by guardrails"]} if replacement else {"trace": ["Answer checked"]}
+_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="planner")
+
+
+def guard_and_plan(state: State) -> State:
+    """Input rail and planner run concurrently - both only read the question - saving one model round-trip.
+    A blocked question returns the refusal and the plan is discarded, so nothing downstream acts on it.
+    copy_context() keeps the planner's Logfire/LangSmith spans under this request's trace."""
+    plan = _pool.submit(contextvars.copy_context().run, planner, state)
+    checked = guard_input(state)
+    if checked.get("answer"):
+        return checked
+    planned = plan.result()
+    return {**planned, "trace": checked["trace"] + planned["trace"]}
 
 
 # ---- graph ----
 def _build():
+    """Gathers what the answer needs; writing the answer streams outside the graph (see _run)."""
     g = StateGraph(State)
-    for name, fn in [("guard_in", guard_input), ("planner", planner), ("retrieve", retrieve),
-                     ("query_data", query_data), ("respond", respond), ("guard_out", guard_output)]:
+    for name, fn in [("guard_plan", guard_and_plan), ("retrieve", retrieve), ("query_data", query_data)]:
         g.add_node(name, fn)
-    g.set_entry_point("guard_in")
-    g.add_conditional_edges("guard_in", lambda s: END if s.get("answer") else "planner", {END: END, "planner": "planner"})
-    g.add_conditional_edges("planner", lambda s: {"policy": "retrieve", "data": "query_data"}.get(s["route"], "respond"),
-                            {"retrieve": "retrieve", "query_data": "query_data", "respond": "respond"})
-    g.add_edge("retrieve", "respond")
-    g.add_edge("query_data", "respond")
-    g.add_edge("respond", "guard_out")
-    g.add_edge("guard_out", END)
+    g.set_entry_point("guard_plan")
+    g.add_conditional_edges(
+        "guard_plan",
+        lambda s: END if s.get("answer") else {"policy": "retrieve", "data": "query_data"}.get(s["route"], END),
+        {END: END, "retrieve": "retrieve", "query_data": "query_data"})
+    g.add_edge("retrieve", END)
+    g.add_edge("query_data", END)
     return g.compile()
 
 
 graph = _build()
 
 
-def chat(user: dict, messages: list[dict]) -> dict:
-    """Answer one question. Returns {reply, route, trace, sources, sql}."""
+def warm():
+    """Pay the one-off costs - NeMo config, API clients, FlashRank model load - before the first question
+    instead of during it (first answer was ~12s). Best-effort: anything missing is skipped."""
+    for step in [rails._get_rails, _client, knowledge._clients] + \
+                ([knowledge._flashranker] if knowledge.RERANKER == "flashrank" else []):
+        try:
+            step()
+        except Exception as e:  # noqa: BLE001 - a cold start is slower, not broken
+            logfire.warning("warm-up skipped {step}: {err}", step=step.__name__, err=str(e))
+
+
+def _ask_stream(prompt: str, model: str = MODEL):
+    """Yield the answer's text as the model writes it."""
+    for chunk in _client().chat.completions.create(model=model, messages=[{"role": "user", "content": prompt}],
+                                                   max_completion_tokens=4000, stream=True):
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
+def _run(user: dict, messages: list[dict], emit):
+    """The whole turn, emitting events: {"delta": text} while the answer streams, {"replace": text} when the
+    shown text must be swapped (input refused, or the output rail blocked the finished answer), then {"done": ...}.
+
+    ponytail: streaming shows the answer before the output rail has seen it, so a blocked answer is on screen
+    for the ~1s the rail takes, then replaced. The per-employee SQL views are the real data boundary and the
+    rail is the last check; buffer the answer server-side if that window ever becomes unacceptable."""
     with logfire.span("disha chat", user_id=user["id"], role=user["role"]):
         state = graph.invoke({"user": user, "messages": messages, "trace": []})
+        if state.get("answer"):  # refused by the input rail
+            emit({"replace": state["answer"]})
+        else:
+            answer = ""
+            with logfire.span("respond"):
+                for delta in _ask_stream(_answer_prompt(state), MODEL):
+                    answer += delta
+                    emit({"delta": delta})
+            with logfire.span("guard output"):
+                replacement = rails.check_output(_question(state), answer)
+            if replacement:
+                emit({"replace": replacement})
+            state["answer"] = replacement or answer
+            state["trace"] += ["Answer written", "Answer blocked by guardrails" if replacement else "Answer checked"]
+    emit({"done": _reply(state)})
+
+
+def chat_stream(user: dict, messages: list[dict]):
+    """Iterate _run's events. The turn runs on its own thread so its tracing spans stay intact however the
+    web server iterates this generator; if the client goes away the turn still finishes, unread."""
+    events = queue.Queue()
+
+    def work():
+        try:
+            _run(user, messages, events.put)
+        except Exception as e:  # noqa: BLE001 - the stream has already started, so report it as an event
+            logfire.exception("chat failed")
+            events.put({"error": f"{type(e).__name__}: {e}"})
+
+    threading.Thread(target=contextvars.copy_context().run, args=(work,), daemon=True).start()
+    while True:
+        event = events.get()
+        yield event
+        if "done" in event or "error" in event:
+            return
+
+
+def chat(user: dict, messages: list[dict]) -> dict:
+    """Answer one question, not streamed (evals, API clients). Same path as chat_stream.
+    Returns {reply, route, trace, sources, contexts, sql}."""
+    for event in chat_stream(user, messages):
+        if "error" in event:
+            raise RuntimeError(event["error"])
+    return event["done"]
+
+
+def _reply(state: State) -> dict:
     result = state.get("result") or {}
     context = state.get("context", [])
     return {

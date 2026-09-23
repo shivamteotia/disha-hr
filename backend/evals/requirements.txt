@@ -1,9 +1,10 @@
-# Judged metrics for the eval harness. Installs into the app's own environment —
+# Judged metrics for the eval harness (judge runs on Groq through the already-installed openai SDK). Installs into the app's own environment —
 # deepeval works with openai>=3, so no separate virtualenv is needed.
 #
 #   cd backend
 #   pip install -r evals/requirements.txt
-#   python -m evals.run              # API must be running on :8000
+#   python -m evals.run              # API must be running on :8000; judge is Groq (GROQ_API_KEY)
+#   python -m evals.compare          # candidate vs baseline snapshot -> PASS / REVIEW / FAIL
 #
 # (RAGAS was tried first and dropped: it pins openai<2 via instructor, needs a pinned old
 #  langchain-community to import at all, and sends max_tokens, which the gpt-5 models reject.)

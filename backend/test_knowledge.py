@@ -61,6 +61,10 @@ ordered = knowledge.rerank("how much notice for earned leave?", HITS, keep=2, as
 assert [h["text"] for h in ordered] == [HITS[1]["text"], HITS[0]["text"]], ordered
 assert len(ordered) == 2, "keep must cap the result"
 
+# Passages the judge leaves out are dropped, not padded back in: off-topic context dilutes the answer.
+only = knowledge.rerank("how much notice for earned leave?", HITS, keep=4, ask=lambda _: '{"order": [1, 1]}')
+assert [h["text"] for h in only] == [HITS[1]["text"]], only
+
 # Fail-open: retrieval must never take the assistant down, so any judge failure keeps vector order.
 def boom(_):
     raise RuntimeError("judge unavailable")
@@ -69,5 +73,27 @@ assert knowledge.rerank("q", HITS, keep=2, ask=boom) == HITS[:2], "must fall bac
 assert knowledge.rerank("q", HITS, keep=2, ask=lambda _: "not json") == HITS[:2], "bad JSON falls back"
 assert knowledge.rerank("q", HITS, keep=2, ask=lambda _: '{"order": [9, 9]}') == HITS[:2], "bad indexes fall back"
 assert knowledge.rerank("q", [], keep=2, ask=boom) == [], "no candidates is not an error"
+
+# --- flash_rerank (fake ranker: same shape as flashrank's rerank() output, sorted best first) ---
+class FakeRanker:
+    def __init__(self, scores):
+        self.scores = scores
+
+    def rerank(self, request):
+        return sorted(({"id": i, "score": s} for i, s in enumerate(self.scores)), key=lambda r: -r["score"])
+
+
+# Relative cutoff: tiny absolute scores still keep the best passage; anything under half the top is dropped.
+assert knowledge.flash_rerank("q", HITS, keep=4, ranker=FakeRanker([0.001, 0.006, 0.004])) == [HITS[1], HITS[2]]
+assert knowledge.flash_rerank("q", HITS, keep=1, ranker=FakeRanker([0.9, 0.95, 0.9])) == [HITS[1]], "keep caps"
+
+
+class BrokenRanker:
+    def rerank(self, request):
+        raise RuntimeError("model missing")
+
+
+assert knowledge.flash_rerank("q", HITS, keep=2, ranker=BrokenRanker()) == HITS[:2], "must fall back to vector order"
+assert knowledge.flash_rerank("q", [], keep=2, ranker=BrokenRanker()) == []
 
 print("knowledge checks passed")

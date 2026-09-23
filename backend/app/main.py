@@ -7,9 +7,11 @@ logfire.configure(send_to_logfire="if-token-present", service_name="disha-hr", c
 import base64
 import binascii
 import datetime as dt
+import json
 import os
 import re
 import secrets
+import threading
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal, Optional
@@ -17,7 +19,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy import Connection
 from sqlalchemy.exc import IntegrityError
@@ -32,8 +34,15 @@ MAX_BODY = 10_000_000  # ~7 MB file after base64
 async def lifespan(_):
     with engine.begin() as db:
         init(db)
+    # load the agent's models and clients in the background so the first question isn't the slow one
+    threading.Thread(target=_warm_agent, daemon=True).start()
     yield
     engine.dispose()
+
+
+def _warm_agent():
+    from .agent import warm  # lazy, like /api/chat: the agent pulls in heavy deps
+    warm()
 
 
 app = FastAPI(title="DISHA HR API", lifespan=lifespan)
@@ -546,7 +555,9 @@ class ChatIn(BaseModel):
 
 # Each question costs several model calls, so cap how many one person can ask.
 # ponytail: in-memory, so the cap is per API process; move the counter to a table if you run more than one worker.
-CHAT_LIMITS = ((8, 60, "minute"), (50, 3600, "hour"))
+# Env overrides are for local eval runs, which ask up to 8 questions as one person per run.
+CHAT_LIMITS = ((int(os.environ.get("CHAT_LIMIT_PER_MINUTE", 8)), 60, "minute"),
+               (int(os.environ.get("CHAT_LIMIT_PER_HOUR", 50)), 3600, "hour"))
 _chat_hits: dict[int, list[float]] = {}
 
 
@@ -563,15 +574,28 @@ def check_chat_limit(user_id: int):
     hits.append(now)
 
 
-@api.post("/chat")
-def chat(body: ChatIn, sid: Annotated[Optional[str], Cookie()] = None):
-    from .agent import chat as ask  # lazy: agent imports heavy deps and this module's db helpers
+def _chat_user(sid) -> dict:
     with engine.begin() as db:  # auth only; don't hold a transaction while waiting on OpenAI
         user = current_user(db, sid)
     check_chat_limit(user["id"])  # before the key check, so the cap holds even when chat is unconfigured
     if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(503, "Disha isn't set up yet: the server has no OPENAI_API_KEY")
-    return ask(dict(user), [m.model_dump() for m in body.messages])
+    return dict(user)
+
+
+@api.post("/chat")
+def chat(body: ChatIn, sid: Annotated[Optional[str], Cookie()] = None):
+    from .agent import chat as ask  # lazy: agent imports heavy deps and this module's db helpers
+    return ask(_chat_user(sid), [m.model_dump() for m in body.messages])
+
+
+@api.post("/chat/stream")
+def chat_stream(body: ChatIn, sid: Annotated[Optional[str], Cookie()] = None):
+    """Same turn as /chat, streamed as NDJSON: {"delta"}* then optional {"replace"}, then {"done"} or {"error"}."""
+    from .agent import chat_stream as ask
+    events = ask(_chat_user(sid), [m.model_dump() for m in body.messages])  # auth errors raise before streaming
+    return StreamingResponse((json.dumps(e, default=str) + "\n" for e in events), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})  # no proxy buffering
 
 
 app.include_router(api)

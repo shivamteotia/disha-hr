@@ -9,11 +9,14 @@ misreads an ordinary HR question as off-topic. A rail that fires reports stop=Tr
 Both gates degrade to open: if NeMo or the OpenAI key is missing the app still answers, and the
 per-employee SQL views in safe_sql.py remain the real protection.
 """
+import asyncio
 import logging
 import os
+import threading
 
 log = logging.getLogger(__name__)
 GUARD_MODEL = os.environ.get("OPENAI_GUARD_MODEL", "gpt-5.4-mini")
+RAIL_TIMEOUT = 15  # seconds; a stuck rail degrades open like any other rail failure instead of hanging the chat
 
 YAML_CONTENT = f"""
 models:
@@ -98,16 +101,37 @@ def _get_rails():
     return _rails
 
 
+_loop = None
+_loop_lock = threading.Lock()
+
+
+def _nemo_loop():
+    """One event loop, on its own thread, for every NeMo call. NeMo's async clients bind to the loop that
+    first used them; calling the sync generate() from a new thread each turn made a fresh loop and the
+    second turn hung forever."""
+    global _loop
+    with _loop_lock:
+        if _loop is None:
+            _loop = asyncio.new_event_loop()
+            threading.Thread(target=_loop.run_forever, daemon=True, name="nemo-loop").start()
+    return _loop
+
+
 def _stopped(messages, options, kind) -> bool:
     rails = _get_rails()
     if rails is None:
         return False
     try:
-        result = rails.generate(messages=messages, options=options)
+        future = asyncio.run_coroutine_threadsafe(rails.generate_async(messages=messages, options=options), _nemo_loop())
+        try:
+            result = future.result(timeout=RAIL_TIMEOUT)
+        except TimeoutError:
+            future.cancel()
+            raise
         activated = getattr(getattr(result, "log", None), "activated_rails", None) or []
         return any(getattr(r, "stop", False) for r in activated)
     except Exception as e:  # noqa: BLE001 - never fail a question because the gate is down
-        log.warning("%s rail error: %s", kind, e)
+        log.warning("%s rail error: %s: %s", kind, type(e).__name__, e)
         return False
 
 
