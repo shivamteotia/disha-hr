@@ -13,4 +13,5 @@ backend/evals/baselines/candidate.json
 
 # secrets / local settings
 .env*
+!.env.example
 .claude/settings.local.json
