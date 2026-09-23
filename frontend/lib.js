@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 // Render's free tier answers 429 from its edge (not our API) while the backend is asleep or failing to start
-const errorText = (r, d) => r.headers.get('x-render-routing')?.startsWith('hibernate')
+const isHibernating = (r) => r.headers.get('x-render-routing')?.startsWith('hibernate');
+const errorText = (r, d) => isHibernating(r)
   ? 'The server is starting up. Try again in a minute.' : d?.detail || r.statusText || `Error ${r.status}`;
 
 export async function api(path, method = 'GET', body) {
@@ -9,8 +10,24 @@ export async function api(path, method = 'GET', body) {
     { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
   const d = await r.json().catch(() => null);
   if (r.status === 401 && location.pathname !== '/login') location.href = '/login';
-  if (!r.ok) throw new Error(errorText(r, d));
+  if (!r.ok) {
+    const err = new Error(errorText(r, d));
+    err.hibernating = isHibernating(r);
+    throw err;
+  }
   return d;
+}
+
+// Render's free tier can take a couple of minutes to wake a hibernated backend; poll instead of failing once.
+export async function apiWithWake(path, method = 'GET', body, { retries = 24, delayMs = 5000, onRetry } = {}) {
+  for (let i = 0; ; i++) {
+    try { return await api(path, method, body); }
+    catch (e) {
+      if (!e.hibernating || i >= retries) throw e;
+      onRetry?.(i + 1);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
 }
 
 // POST that reads an NDJSON stream, calling onEvent(obj) per line as it arrives; resolves when the stream ends

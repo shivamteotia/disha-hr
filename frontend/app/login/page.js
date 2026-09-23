@@ -1,12 +1,20 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api, onSubmit } from '@/lib';
+import { apiWithWake, onSubmit } from '@/lib';
 
 export default function Login() {
   const [error, setError] = useState('');
-  useEffect(() => { api('/me').then(() => (location.href = '/'), () => {}); }, []);
+  const [waking, setWaking] = useState(0);
+  useEffect(() => {
+    apiWithWake('/me', 'GET', undefined, { onRetry: setWaking })
+      .then(() => (location.href = '/'), (e) => { setWaking(0); if (e.hibernating) setError(e.message); });
+  }, []);
   const login = onSubmit(async (body) => {
-    try { await api('/login', 'POST', body); location.href = '/'; } catch (e) { setError(e.message); }
+    try {
+      setError('');
+      await apiWithWake('/login', 'POST', body, { onRetry: setWaking });
+      location.href = '/';
+    } catch (e) { setError(e.message); } finally { setWaking(0); }
   });
   return (
     <>
@@ -21,8 +29,9 @@ export default function Login() {
             Demo employee: rahul.sharma@company.com / password123 (a manager, so approvals show too)
           </p>
           <a href="/how-it-works" style={{ fontSize: 13 }}>How Disha works: graph, evals and traces →</a>
+          {waking > 0 && <p style={{ color: 'var(--m)', margin: 0 }}>Waking up the server, this can take a minute or two… (attempt {waking})</p>}
           {error && <p style={{ color: 'var(--bad)', margin: 0 }}>{error}</p>}
-          <button className="btn">Sign in</button>
+          <button className="btn" disabled={waking > 0}>Sign in</button>
         </form>
       </div>
     </>
