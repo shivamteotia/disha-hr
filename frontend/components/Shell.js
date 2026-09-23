@@ -20,7 +20,12 @@ export default function Shell({ children }) {
 
   const reloadMe = useCallback(() => api('/me').then(setMe), []);
   const reloadEmps = useCallback(() => api('/employees').then(setEmps), []);
-  useEffect(() => { reloadMe().then(reloadEmps).catch(() => {}); }, [reloadMe, reloadEmps]);
+  const [loadErr, setLoadErr] = useState('');
+  const start = useCallback(() => {
+    setLoadErr('');
+    reloadMe().then(reloadEmps).catch((e) => setLoadErr(e.message)); // 401 already redirected to /login
+  }, [reloadMe, reloadEmps]);
+  useEffect(start, [start]);
 
   const toast = useCallback((m) => { setMsg(m); clearTimeout(timer.current); timer.current = setTimeout(() => setMsg(''), 2500); }, []);
   // run an API call; toast the result; reload on success. Returns true on success.
@@ -28,7 +33,16 @@ export default function Shell({ children }) {
     try { await fn(); if (okMsg) toast(okMsg); await after?.(); return true; } catch (e) { toast(e.message); return false; }
   }, [toast]);
 
-  if (!me) return null;
+  if (!me) return loadErr ? (
+    <>
+      <header><b>DISHA</b></header>
+      <main><div className="card login">
+        <h2>Can't load DISHA</h2>
+        <p>{loadErr}</p>
+        <button className="btn" onClick={start}>Retry</button>
+      </div></main>
+    </>
+  ) : null;
   const isAdmin = me.role === 'admin';
   const value = {
     me, reloadMe, emps, reloadEmps, isAdmin, toast, act, setUid,

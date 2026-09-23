@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 
+// Render's free tier answers 429 from its edge (not our API) while the backend is asleep or failing to start
+const errorText = (r, d) => r.headers.get('x-render-routing')?.startsWith('hibernate')
+  ? 'The server is starting up. Try again in a minute.' : d?.detail || r.statusText || `Error ${r.status}`;
+
 export async function api(path, method = 'GET', body) {
   const r = await fetch('/api' + path, method === 'GET' ? {} :
     { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
   const d = await r.json().catch(() => null);
   if (r.status === 401 && location.pathname !== '/login') location.href = '/login';
-  if (!r.ok) throw new Error(d?.detail || r.statusText);
+  if (!r.ok) throw new Error(errorText(r, d));
   return d;
 }
 
@@ -15,7 +19,7 @@ export async function apiStream(path, body, onEvent) {
   if (!r.ok) {
     const d = await r.json().catch(() => null);
     if (r.status === 401 && location.pathname !== '/login') location.href = '/login';
-    throw new Error(d?.detail || r.statusText);
+    throw new Error(errorText(r, d));
   }
   const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = '';
