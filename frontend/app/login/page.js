@@ -20,6 +20,7 @@ export default function Login() {
           <p style={{ color: 'var(--m)', margin: 0, fontSize: 13 }}>
             Demo employee: rahul.sharma@company.com / password123 (a manager, so approvals show too)
           </p>
+          <a href="/how-it-works" style={{ fontSize: 13 }}>How Disha works: graph, evals and traces →</a>
           {error && <p style={{ color: 'var(--bad)', margin: 0 }}>{error}</p>}
           <button className="btn">Sign in</button>
         </form>

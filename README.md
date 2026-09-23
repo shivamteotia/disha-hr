@@ -3,6 +3,39 @@
 Mobile-friendly HR app: **Next.js** frontend → **FastAPI** backend → **SQLite now, PostgreSQL later**.
 The AI layer (orchestrator, RAG with pgvector, OpenAI, Logfire, RAG Triad) comes next — see Roadmap.
 
+## How it works
+
+The app also serves this as a page at `/how-it-works` (no login needed).
+
+![Disha answering a data question and a policy question, with the path each answer took](frontend/public/disha-chat.png)
+
+**The LangGraph planner** (`backend/app/agent.py`; nodes and edges match `graph.get_graph().draw_mermaid()`). The
+answer is written after the graph ends, so it can stream, then the output rail checks it.
+
+```mermaid
+graph TD;
+  start([question]) --> guard_plan["guard_plan<br/>input rail ∥ planner"];
+  guard_plan -.policy.-> retrieve["retrieve<br/>Qdrant RAG + rerank"];
+  guard_plan -.data.-> query_data["query_data<br/>text-to-SQL on scoped views"];
+  guard_plan -.small talk / refused.-> responder;
+  retrieve --> responder["responder (streamed)"];
+  query_data --> responder;
+  responder --> rail["output rail"] --> done([answer]);
+```
+
+**Evals**: 20 golden questions through the live API, mean of 5 runs (full table and findings in
+[`backend/evals/baselines/RESULTS.md`](backend/evals/baselines/RESULTS.md)):
+
+| | Current (LLM reranker) | Previous (FlashRank) |
+|---|---|---|
+| Route / data / safety checks | 100% / 100% / 100% | 98% / 100% / 100% |
+| Correctness · completeness | 0.93 · 0.83 | 0.73 · 0.70 |
+| Contextual recall · precision | 1.00 · 1.00 | 0.80 · 0.84 |
+| Latency p50 / p95 | 4.5s / 6.9s | 7.9s / 10.1s |
+
+**A real trace** (LangSmith), *"A client wants to give me a gift. When do I have to declare it?"*:
+`guard_plan` 1.40s → `retrieve` 2.73s (2 passages) → `responder` 1.31s, about 5.5s end to end.
+
 ## Setup (Windows)
 1. `pip install -r backend/requirements.txt`
 2. `cd frontend && npm install`

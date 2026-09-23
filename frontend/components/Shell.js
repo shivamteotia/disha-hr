@@ -8,7 +8,7 @@ const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
 
 const TABS = [['/', 'Dashboard'], ['/disha', 'Disha ✨'], ['/attendance', 'Attendance'], ['/leaves', 'Leaves'], ['/expenses', 'Expenses'],
-  ['/payslips', 'Payslips'], ['/goals', 'Goals'], ['/documents', 'Documents'], ['/employees', 'Employees'], ['/profile', 'Profile']];
+  ['/payslips', 'Payslips'], ['/goals', 'Goals'], ['/documents', 'Documents'], ['/employees', 'Employees'], ['/profile', 'Profile'], ['/how-it-works', 'How it works']];
 
 export default function Shell({ children }) {
   const [me, setMe] = useState(null);
