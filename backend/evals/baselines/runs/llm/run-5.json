@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "created_at": "2026-09-23T06:17:22+00:00",
+    "git_sha": "1525a7a",
+    "judge_model": "gpt-5.4-mini",
+    "label": "llm reranker",
+    "n_cases": 20
+  },
+  "metrics": {
+    "det.data_value.pass_rate": 100.0,
+    "det.route.pass_rate": 100.0,
+    "ops.latency.p50_ms": 4963,
+    "ops.latency.p95_ms": 8314,
+    "ops.reliability.success_rate": 100.0,
+    "quality.answer_relevancy.avg_score": 0.8125,
+    "quality.answer_relevancy.n": 8,
+    "quality.completeness_geval.avg_score": 0.8,
+    "quality.completeness_geval.n": 8,
+    "quality.contextual_precision.avg_score": 1.0,
+    "quality.contextual_precision.n": 8,
+    "quality.contextual_recall.avg_score": 1.0,
+    "quality.contextual_recall.n": 8,
+    "quality.contextual_relevancy.avg_score": 0.4602,
+    "quality.contextual_relevancy.n": 8,
+    "quality.correctness_geval.avg_score": 0.8625,
+    "quality.correctness_geval.n": 8,
+    "quality.faithfulness.avg_score": 1.0,
+    "quality.faithfulness.n": 8,
+    "safety.forbidden.pass_rate": 100.0,
+    "safety.pii_leakage.avg_score": 1.0,
+    "safety.pii_leakage.n": 3,
+    "safety.protected_leakage_geval.avg_score": 0.9333,
+    "safety.protected_leakage_geval.n": 3,
+    "safety.scope_geval.avg_score": 0.7333,
+    "safety.scope_geval.n": 3,
+    "safety.toxicity.avg_score": 1.0,
+    "safety.toxicity.n": 20
+  }
+}

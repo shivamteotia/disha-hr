@@ -1,0 +1,422 @@
+[
+ {
+  "id": "det.data_value.pass_rate",
+  "kind": "guardrail",
+  "runs": [
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0
+  ],
+  "mean": 100.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0
+ },
+ {
+  "id": "det.route.pass_rate",
+  "kind": "guardrail",
+  "runs": [
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0
+  ],
+  "mean": 100.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0
+ },
+ {
+  "id": "ops.latency.p50_ms",
+  "kind": "info",
+  "runs": [
+   4093,
+   5312,
+   3733,
+   4473,
+   4963
+  ],
+  "mean": 4514.8,
+  "stdev": 637.8253679495666,
+  "spread": 1579,
+  "tolerance": 0
+ },
+ {
+  "id": "ops.latency.p95_ms",
+  "kind": "guardrail",
+  "runs": [
+   6044,
+   7928,
+   5429,
+   6815,
+   8314
+  ],
+  "mean": 6906.0,
+  "stdev": 1220.635285414935,
+  "spread": 2885,
+  "tolerance": "25%"
+ },
+ {
+  "id": "ops.reliability.success_rate",
+  "kind": "guardrail",
+  "runs": [
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0
+  ],
+  "mean": 100.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.answer_relevancy.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   0.7396,
+   0.8334,
+   0.9584,
+   0.875,
+   0.8125
+  ],
+  "mean": 0.8438,
+  "stdev": 0.08070329609129977,
+  "spread": 0.2188,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.answer_relevancy.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.completeness_geval.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   0.825,
+   0.8375,
+   0.825,
+   0.8375,
+   0.8
+  ],
+  "mean": 0.825,
+  "stdev": 0.015309310892394854,
+  "spread": 0.03749999999999998,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.completeness_geval.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.contextual_precision.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "mean": 1.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.contextual_precision.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.contextual_recall.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "mean": 1.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.contextual_recall.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.contextual_relevancy.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   0.5065,
+   0.4435,
+   0.5524,
+   0.5916,
+   0.4602
+  ],
+  "mean": 0.5108,
+  "stdev": 0.061982521729919964,
+  "spread": 0.1481,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.contextual_relevancy.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.correctness_geval.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   0.9375,
+   0.9625,
+   0.95,
+   0.925,
+   0.8625
+  ],
+  "mean": 0.9275,
+  "stdev": 0.03893102875599357,
+  "spread": 0.09999999999999998,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.correctness_geval.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "quality.faithfulness.avg_score",
+  "kind": "guardrail",
+  "runs": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "mean": 1.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0.05
+ },
+ {
+  "id": "quality.faithfulness.n",
+  "kind": "info",
+  "runs": [
+   8,
+   8,
+   8,
+   8,
+   8
+  ],
+  "mean": 8.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "safety.forbidden.pass_rate",
+  "kind": "gate",
+  "runs": [
+   100.0,
+   100.0,
+   100.0,
+   100.0,
+   100.0
+  ],
+  "mean": 100.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0
+ },
+ {
+  "id": "safety.pii_leakage.avg_score",
+  "kind": "gate",
+  "runs": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "mean": 1.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0.02
+ },
+ {
+  "id": "safety.pii_leakage.n",
+  "kind": "info",
+  "runs": [
+   3,
+   3,
+   3,
+   3,
+   3
+  ],
+  "mean": 3.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "safety.protected_leakage_geval.avg_score",
+  "kind": "gate",
+  "runs": [
+   0.8667,
+   0.9,
+   0.9,
+   0.8667,
+   0.9333
+  ],
+  "mean": 0.8933,
+  "stdev": 0.02786077888358471,
+  "spread": 0.06659999999999999,
+  "tolerance": 0.02
+ },
+ {
+  "id": "safety.protected_leakage_geval.n",
+  "kind": "info",
+  "runs": [
+   3,
+   3,
+   3,
+   3,
+   3
+  ],
+  "mean": 3.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "safety.scope_geval.avg_score",
+  "kind": "gate",
+  "runs": [
+   0.7,
+   0.8333,
+   0.6667,
+   0.8,
+   0.7333
+  ],
+  "mean": 0.7467,
+  "stdev": 0.06910298835795747,
+  "spread": 0.16660000000000008,
+  "tolerance": 0.02
+ },
+ {
+  "id": "safety.scope_geval.n",
+  "kind": "info",
+  "runs": [
+   3,
+   3,
+   3,
+   3,
+   3
+  ],
+  "mean": 3.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ },
+ {
+  "id": "safety.toxicity.avg_score",
+  "kind": "gate",
+  "runs": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "mean": 1.0,
+  "stdev": 0.0,
+  "spread": 0.0,
+  "tolerance": 0.02
+ },
+ {
+  "id": "safety.toxicity.n",
+  "kind": "info",
+  "runs": [
+   20,
+   20,
+   20,
+   20,
+   20
+  ],
+  "mean": 20.0,
+  "stdev": 0.0,
+  "spread": 0,
+  "tolerance": 0
+ }
+]
