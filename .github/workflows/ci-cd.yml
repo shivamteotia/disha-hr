@@ -139,9 +139,9 @@ jobs:
             set -e
             command -v docker >/dev/null || curl -fsSL https://get.docker.com | sudo sh
             sudo docker login -u AWS --password-stdin ${IMAGE%%/*}
-            export IMAGE=$IMAGE TAG=$GITHUB_SHA
-            sudo -E docker compose pull
-            sudo -E docker compose up -d --remove-orphans
+            # not sudo -E: that keeps HOME=/home/ubuntu and loses root's ECR login
+            sudo IMAGE=$IMAGE TAG=$GITHUB_SHA docker compose pull
+            sudo IMAGE=$IMAGE TAG=$GITHUB_SHA docker compose up -d --remove-orphans
             sudo docker image prune -af >/dev/null"
       - name: Health check
         run: |
