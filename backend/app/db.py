@@ -27,7 +27,11 @@ if DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql
     # defaults to the psycopg2 dialect — we only install psycopg (v3), so force that driver.
     DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL.split("://", 1)[1]
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if IS_SQLITE else {})
+# pool_pre_ping/pool_recycle: Postgres (or a proxy in front of it) closes idle connections server-side;
+# without this SQLAlchemy hands a dead pooled connection straight to a query ("SSL connection has been
+# closed unexpectedly"). SQLite has no server-side idle timeout, so it doesn't need either.
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if IS_SQLITE else {},
+                       **({} if IS_SQLITE else {"pool_pre_ping": True, "pool_recycle": 1800}))
 if IS_SQLITE:
     @event.listens_for(engine, "connect")
     def _sqlite_fk(conn, _):

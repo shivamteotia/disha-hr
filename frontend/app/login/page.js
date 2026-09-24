@@ -29,7 +29,7 @@ export default function Login() {
             Demo employee: rahul.sharma@company.com / password123 (a manager, so approvals show too)
           </p>
           <a href="/how-it-works" style={{ fontSize: 13 }}>How Disha works: graph, evals and traces →</a>
-          {waking > 0 && <p style={{ color: 'var(--m)', margin: 0 }}>Waking up the server, this can take a minute or two… (attempt {waking})</p>}
+          {waking > 0 && <p style={{ color: 'var(--m)', margin: 0 }}>Waking up the server… (attempt {waking})</p>}
           {error && <p style={{ color: 'var(--bad)', margin: 0 }}>{error}</p>}
           <button className="btn" disabled={waking > 0}>Sign in</button>
         </form>

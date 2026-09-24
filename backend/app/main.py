@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy import Connection
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 # ponytail: fixed yearly quotas for everyone, move to a table when policy differs per grade/location
 QUOTA = {"CL": 12, "SL": 12, "EL": 15}
@@ -69,6 +69,14 @@ async def bad_input(_, exc: RequestValidationError):
 @app.exception_handler(IntegrityError)
 async def bad_data(_, exc: IntegrityError):
     return JSONResponse({"detail": str(exc.orig).splitlines()[0]}, 400)
+
+
+@app.exception_handler(OperationalError)
+async def db_unavailable(request: Request, exc: OperationalError):
+    # A dead/unreachable database, not a client mistake: never leak the query, host, or credentials in
+    # DATABASE_URL to the response — log the full traceback server-side and tell the client to retry.
+    logfire.exception("database unavailable on {path}", path=request.url.path)
+    return JSONResponse({"detail": "Database temporarily unavailable. Please try again."}, 503, headers={"Retry-After": "5"})
 
 
 def get_db():

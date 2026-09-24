@@ -18,14 +18,16 @@ export async function api(path, method = 'GET', body) {
   return d;
 }
 
-// Render's free tier can take a couple of minutes to wake a hibernated backend; poll instead of failing once.
-export async function apiWithWake(path, method = 'GET', body, { retries = 24, delayMs = 5000, onRetry } = {}) {
+// A hibernated Render backend can take a few seconds to answer the ping that wakes it; retry a couple of
+// times with backoff rather than making the user click Sign in repeatedly. Not a health-check loop: it stops
+// after 2 attempts and never fires again on its own.
+export async function apiWithWake(path, method = 'GET', body, { retries = 2, baseDelayMs = 3000, onRetry } = {}) {
   for (let i = 0; ; i++) {
     try { return await api(path, method, body); }
     catch (e) {
       if (!e.hibernating || i >= retries) throw e;
       onRetry?.(i + 1);
-      await new Promise((r) => setTimeout(r, delayMs));
+      await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)));
     }
   }
 }
