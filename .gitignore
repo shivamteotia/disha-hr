@@ -15,3 +15,5 @@ backend/evals/baselines/candidate.json
 .env*
 !.env.example
 .claude/settings.local.json
+*.pem
+*accessKeys*.csv

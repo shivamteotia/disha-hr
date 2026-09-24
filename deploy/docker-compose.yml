@@ -1,0 +1,20 @@
+# Runs on the EC2 box; .github/workflows/ci-cd.yml copies this file and backend.env next to it.
+services:
+  backend:
+    image: ${IMAGE}:backend-${TAG}
+    env_file: backend.env
+    environment:
+      PORT: 8000
+    volumes:
+      - data:/data   # SQLite lives here when DATABASE_URL isn't set, so it survives redeploys
+    restart: unless-stopped
+
+  frontend:
+    image: ${IMAGE}:frontend-${TAG}
+    ports:
+      - "80:8080"
+    depends_on: [backend]
+    restart: unless-stopped
+
+volumes:
+  data:
