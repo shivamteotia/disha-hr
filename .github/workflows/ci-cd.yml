@@ -1,0 +1,153 @@
+# test -> evaluate -> push (ECR) -> deploy (EC2 over SSH). PRs stop after evaluate.
+#
+# Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, EC2_SSH_KEY (the .pem), BACKEND_ENV (contents of
+#          backend/.env), ADMIN_PASSWORD, DATABASE_URL (optional; unset = SQLite on the box's /data volume)
+# Variables: EC2_HOST
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPO: dishahr
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: pip install -r backend/requirements.txt
+      - name: Agent sandbox + knowledge checks
+        working-directory: backend
+        run: python test_agent.py && python test_knowledge.py
+      - name: API contract tests
+        run: node test.mjs
+      - name: Frontend build
+        working-directory: frontend
+        run: npm ci && npm run build
+
+  evaluate:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      CHAT_LIMIT_PER_MINUTE: 1000   # the golden set would trip the per-user chat limit
+      CHAT_LIMIT_PER_HOUR: 1000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: "backend/*requirements.txt" }
+      - run: pip install -r backend/requirements.txt -r backend/evals/requirements.txt
+      - name: Start seeded API
+        working-directory: backend
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          printf '%s\n' "$BACKEND_ENV" > .env
+          python -m app.seed
+          nohup uvicorn app.main:app --port 8000 > api.log 2>&1 &
+          for i in $(seq 60); do curl -s -o /dev/null 127.0.0.1:8000/api/me && exit 0; sleep 2; done
+          cat api.log; exit 1
+      - name: Run golden set (deterministic metrics only; judged metrics stay a local `python -m evals.run`)
+        working-directory: backend
+        run: python -m evals.run --no-judge --label "${{ github.sha }}"
+      - name: Compare with baseline
+        working-directory: backend
+        run: |
+          python -m evals.compare && exit 0 || code=$?
+          if [ "$code" = 2 ]; then echo "::warning::Evals: REVIEW - a quality/latency metric moved, see the eval-report artifact"; exit 0; fi
+          exit "$code"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            backend/evals/report*.json
+            backend/evals/baselines/candidate.json
+            backend/api.log
+
+  push:
+    needs: evaluate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push images
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
+        run: |
+          docker build -t "$IMAGE:backend-$GITHUB_SHA" backend
+          docker build -t "$IMAGE:frontend-$GITHUB_SHA" --build-arg API_URL=http://backend:8000 frontend
+          docker push "$IMAGE:backend-$GITHUB_SHA"
+          docker push "$IMAGE:frontend-$GITHUB_SHA"
+
+  deploy:
+    needs: push
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HOST: ubuntu@${{ vars.EC2_HOST }}
+      IMAGE: ${{ needs.push.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Prepare SSH and env file
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          install -m 600 /dev/null ~/key.pem && printf '%s\n' "$EC2_SSH_KEY" > ~/key.pem
+          mkdir -p ~/.ssh && ssh-keyscan -H "${{ vars.EC2_HOST }}" >> ~/.ssh/known_hosts
+          install -m 600 /dev/null backend.env
+          { printf '%s\n' "$BACKEND_ENV"
+            echo "DATABASE_URL=${DATABASE_URL:-sqlite:////data/disha.db}"
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "TZ=Asia/Kolkata"
+          } >> backend.env
+          # ponytail: plain HTTP on the instance IP, so HTTPS (Secure cookie) stays off; set HTTPS=true once TLS fronts it
+      - name: Copy compose file and env
+        run: scp -i ~/key.pem deploy/docker-compose.yml backend.env "$HOST:~/"
+      - name: Pull and restart
+        run: |
+          aws ecr get-login-password | ssh -i ~/key.pem "$HOST" "
+            set -e
+            command -v docker >/dev/null || curl -fsSL https://get.docker.com | sudo sh
+            sudo docker login -u AWS --password-stdin ${IMAGE%%/*}
+            export IMAGE=$IMAGE TAG=$GITHUB_SHA
+            sudo -E docker compose pull
+            sudo -E docker compose up -d --remove-orphans
+            sudo docker image prune -af >/dev/null"
+      - name: Health check
+        run: |
+          for i in $(seq 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://${{ vars.EC2_HOST }}/api/me" || true)
+            case "$code" in 200|401) echo "up ($code)"; exit 0;; esac
+            sleep 5
+          done
+          echo "::error::http://${{ vars.EC2_HOST }} did not come up (last status $code)"; exit 1
