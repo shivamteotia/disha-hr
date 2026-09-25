@@ -21,12 +21,12 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: same OS as the EC2 box; ubuntu-latest moves to 26.04 on 2026-10-19
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements.txt }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: pip install -r backend/requirements.txt
       - name: Agent sandbox + knowledge checks
@@ -40,13 +40,13 @@ jobs:
 
   evaluate:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CHAT_LIMIT_PER_MINUTE: 1000   # the golden set would trip the per-user chat limit
       CHAT_LIMIT_PER_HOUR: 1000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12", cache: pip, cache-dependency-path: "backend/*requirements.txt" }
       - run: pip install -r backend/requirements.txt -r backend/evals/requirements.txt
       - name: Start seeded API
@@ -69,7 +69,7 @@ jobs:
           if [ "$code" = 2 ]; then echo "::warning::Evals: REVIEW - a quality/latency metric moved, see the eval-report artifact"; exit 0; fi
           exit "$code"
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-report
           path: |
@@ -80,12 +80,12 @@ jobs:
   push:
     needs: evaluate
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       image: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -103,15 +103,15 @@ jobs:
 
   deploy:
     needs: push
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     env:
       HOST: ubuntu@${{ vars.EC2_HOST }}
       DOMAIN: ${{ vars.EC2_HOST }}.sslip.io   # sslip.io resolves <ip>.sslip.io to <ip>, so Let's Encrypt can issue a cert
       IMAGE: ${{ needs.push.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

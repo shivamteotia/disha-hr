@@ -55,6 +55,13 @@ Env vars live in `backend/.env` (copy from `backend/.env.example`): `DATABASE_UR
 `HTTPS` (Secure cookie behind TLS), `API_URL` (frontend proxy target), `OPENAI_API_KEY`, `QDRANT_*`,
 `LOGFIRE_TOKEN`, `LANGSMITH_*`, `GROQ_API_KEY` + `JUDGE_MODEL` (eval judge).
 
+Deploy: every push to `main` runs `.github/workflows/ci-cd.yml` (test → evaluate → push images to ECR `dishahr` →
+SSH deploy to EC2 with `deploy/docker-compose.yml`, Caddy for HTTPS on `<ip>.sslip.io`); live at
+https://13.201.82.67.sslip.io. PRs run test + evaluate only. Evaluate is `evals.run --no-judge` + `evals.compare`:
+exit 1 (safety gate) blocks the deploy, exit 2 (REVIEW) only warns. Server env comes from the `BACKEND_ENV` secret
+(the whole `backend/.env`) plus `ADMIN_PASSWORD`/`DATABASE_URL` secrets; SQLite lives on the box's `data` volume.
+Runners are pinned to `ubuntu-24.04` (same OS as the box).
+
 ## Architecture
 
 **Split repo, one DB.** `backend/app/db.py` defines the whole schema with SQLAlchemy Core (not the ORM) and

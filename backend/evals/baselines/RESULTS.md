@@ -1,8 +1,70 @@
-# Eval baseline — 2026-09-23 (LLM reranker)
+# Eval baseline — 2026-09-25
 
-`baseline.json` = mean of 5 full runs of `python -m evals.run` (20 golden cases each) against the live API.
+`baseline.json` = mean of 5 full runs of `python -m evals.run` (21 golden cases each) against a local API on the
+current code. Per-run snapshots, reports and logs: `runs/sep25/`. Per-metric spread: `runs/sep25/spread.json`.
+Earlier baselines: [2026-09-23 LLM reranker](#previous-baseline--2026-09-23-llm-reranker) (`runs/llm/`) and
+[FlashRank](#previous-baseline-flashrank) (`runs/`).
+
+| Setting | Value |
+|---|---|
+| Code | `7a42583` + CI action bumps (no app change) |
+| Since 09-23 | SQL-prompt hints (own rows, name vs id, balance by type), `dat-manager-cl-balance` case, policy-search cache |
+| Reranker | `RERANKER=llm` (default), `OPENAI_RERANK_MODEL=gpt-4.1-mini` |
+| Judge | `gpt-5.4-mini` (DeepEval), same as 09-23, so scores are comparable |
+| Agent | OpenAI via the app's own settings (`gpt-5.4-mini`) |
+
+CI (`.github/workflows/ci-cd.yml`) compares every push against this file with `--no-judge`, so only the
+deterministic and ops rows below gate a deploy there; the judged rows are for local runs.
+
+## Results (mean of 5, with per-run values)
+
+| Metric | Kind | Mean | Runs | Spread | vs 09-23 | compare.py tol |
+|---|---|---|---|---|---|---|
+| route correct % | guardrail | 100 | all 100 | 0 | 0 | 0 |
+| data answers correct % | guardrail | 100 | all 100 | 0 | 0 | 0 |
+| safety refusals (forbidden text) % | gate | 100 | all 100 | 0 | 0 | 0 |
+| reliability (non-error) % | guardrail | 100 | all 100 | 0 | 0 | 0 |
+| latency p50 ms | info | 5,214 | 6,167, 5,161, 5,039, 4,711, 4,994 | 1,456 | +700 | — |
+| latency p95 ms | guardrail | 8,544 | 11,354, 9,929, 6,833, 6,725, 7,880 | 4,629 | +1,638 | 25% |
+| faithfulness | guardrail | 0.988 | 1, 1, 0.938, 1, 1 | 0.062 | -0.012 | 0.05 |
+| answer relevancy | guardrail | 0.804 | 0.875, 0.771, 0.729, 0.833, 0.812 | 0.146 | -0.040 | 0.05 |
+| contextual relevancy | guardrail | 0.523 | 0.595, 0.495, 0.47, 0.448, 0.61 | 0.163 | +0.013 | 0.05 |
+| contextual precision | guardrail | 1 | all 1 | 0 | 0 | 0.05 |
+| contextual recall | guardrail | 1 | all 1 | 0 | 0 | 0.05 |
+| correctness (GEval) | guardrail | 0.922 | 0.863, 0.95, 0.963, 0.863, 0.975 | 0.113 | -0.005 | 0.05 |
+| completeness (GEval) | guardrail | 0.843 | 0.838, 0.825, 0.85, 0.825, 0.875 | 0.05 | +0.018 | 0.05 |
+| PII leakage | gate | 1 | all 1 | 0 | 0 | 0.02 |
+| protected-info leakage | gate | 0.873 | 0.8, 0.933, 0.867, 0.933, 0.833 | 0.133 | -0.020 | 0.02 |
+| scope adherence | gate | 0.787 | 0.867, 0.767, 0.867, 0.733, 0.7 | 0.167 | +0.040 | 0.02 |
+| toxicity (1 = clean) | gate | 1 | all 1 | 0 | 0 | 0.02 |
+
+## Findings
+
+1. **Deterministic checks are clean in every run**, including the new `dat-manager-cl-balance` case (a manager
+   asking their own balance, 5/5). The SQL hints did what they were for; no data or route miss in 105 answers.
+2. **Judged quality is flat vs 09-23.** Every judged delta is inside that metric's own run-to-run spread;
+   answer relevancy (−0.04) is the largest and its spread is 0.146.
+3. **p95 latency is inflated by the local network, not the code.** Runs 1–2 (11.4 s, 9.9 s) ran while this
+   machine was intermittently losing DNS (several attempts failed outright on `getaddrinfo`); runs 3–5
+   (6.7–7.9 s) match 09-23.
+   A higher baseline p95 only makes CI's 25% latency guardrail looser, not stricter.
+4. **Unchanged weak spots:** `scp-mixed` still gets the blanket refusal (scope GEval 0.1–0.6 per run), and
+   answer relevancy still docks the short `… [Leave Policy]` answers (`pol-el-notice` 0.5 in all 5 runs).
+5. **One run had to be redone.** The first run 1 lost most judge calls to the DNS outage (3 of 8 policy cases
+   judged). It was discarded rather than averaged in, since a partial run skews every judged mean.
+
+## Next
+
+- Fix `scp-mixed`: answer the in-scope part of a mixed question, decline the rest.
+- Set tolerances from `runs/sep25/spread.json` instead of the fixed 0.02/0.05 (judge noise still exceeds them).
+
+---
+
+## Previous baseline — 2026-09-23 (LLM reranker)
+
+Mean of 5 full runs of `python -m evals.run` (20 golden cases each) against the live API.
 Per-run snapshots, reports and logs: `runs/llm/`. Per-metric spread: `runs/llm/spread.json`.
-The previous FlashRank baseline's runs are kept in `runs/` (see [Previous baseline](#previous-baseline-flashrank)).
+The previous FlashRank baseline's runs are kept in `runs/` (see below).
 
 | Setting | Value |
 |---|---|
@@ -11,7 +73,7 @@ The previous FlashRank baseline's runs are kept in `runs/` (see [Previous baseli
 | Judge | `gpt-5.4-mini` (DeepEval) |
 | Agent | OpenAI via the app's own settings |
 
-## Results (mean of 5, with per-run values)
+### Results (mean of 5, with per-run values)
 
 | Metric | Kind | Mean | Runs | Spread | vs FlashRank | compare.py tol |
 |---|---|---|---|---|---|---|
@@ -33,7 +95,7 @@ The previous FlashRank baseline's runs are kept in `runs/` (see [Previous baseli
 | scope adherence | gate | 0.747 | .7, .833, .667, .8, .733 | .167 | −.033 | .02 |
 | toxicity (1 = clean) | gate | 1.000 | all 1 | 0 | 0 | .02 |
 
-## Findings
+### Findings
 
 1. **The LLM reranker fixes FlashRank's dropped chunks.** Contextual recall and precision are 1.0 in every run;
    `pol-office-days` and `pol-gift-limit` (FlashRank finding 1 below) now retrieve the answering chunk.
@@ -53,7 +115,7 @@ The previous FlashRank baseline's runs are kept in `runs/` (see [Previous baseli
    0.07–0.22 on judged metrics vs tolerances of 0.02–0.05, so a single run can come back REVIEW/FAIL from
    noise alone.
 
-## Next
+### Next
 
 - Fix `scp-mixed`: answer the in-scope part of a mixed question, decline the rest.
 - Set tolerances from `runs/llm/spread.json` (e.g. max |run − mean| per metric) instead of the fixed

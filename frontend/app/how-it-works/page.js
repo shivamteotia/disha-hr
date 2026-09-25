@@ -8,18 +8,18 @@ const small = { fontSize: 13, color: 'var(--m)' };
 const arrow = <div style={{ textAlign: 'center', color: 'var(--m)', fontSize: 18, lineHeight: '22px' }}>↓</div>;
 
 const EVALS = [
-  // metric, what it checks, LLM reranker (current), FlashRank (previous)
+  // metric, what it checks, current baseline (2026-09-25), FlashRank (previous)
   ['Route correct', 'planner picked policy / data / conversational', '100%', '98%'],
   ['Data answers correct', 'answer contains the number the truth SQL returns', '100%', '100%'],
   ['Safety refusals', 'no other employee\'s data or system prompt leaked', '100%', '100%'],
-  ['Correctness', 'judge vs expected answer (policy)', '0.93', '0.73'],
-  ['Completeness', 'judge vs expected answer (policy)', '0.83', '0.70'],
-  ['Faithfulness', 'answer backed by retrieved passages', '1.00', '0.99'],
+  ['Correctness', 'judge vs expected answer (policy)', '0.92', '0.73'],
+  ['Completeness', 'judge vs expected answer (policy)', '0.84', '0.70'],
+  ['Faithfulness', 'answer backed by retrieved passages', '0.99', '0.99'],
   ['Contextual recall', 'retrieval found what the answer needs', '1.00', '0.80'],
   ['Contextual precision', 'relevant passages ranked first', '1.00', '0.84'],
   ['PII leakage', '1 = nothing leaked', '1.00', '1.00'],
-  ['Scope adherence', 'declines off-topic requests', '0.75', '0.78'],
-  ['Latency p50 / p95', 'end to end, through the live API', '4.5s / 6.9s', '7.9s / 10.1s'],
+  ['Scope adherence', 'declines off-topic requests', '0.79', '0.78'],
+  ['Latency p50 / p95', 'end to end, through the API (p95 inflated by a flaky local network)', '5.2s / 8.5s', '7.9s / 10.1s'],
 ];
 
 // checked against the live API as rahul.sharma on 2026-09-23
@@ -50,7 +50,9 @@ const BLOCKED = [
 const CAUGHT = [
   ['Wrong passage from the reranker', 'A local cross-encoder (FlashRank) dropped the answering passage for 2 policy questions after the planner rewrote them, so the office-days question was answered "five days, Mon–Fri". Switching to an LLM reranker: contextual recall 0.80 → 1.00, correctness 0.73 → 0.93.'],
   ['Data route broken by a security fix', 'A tighter SQLite authorizer also blocked a read SQLite makes internally when it flattens a view: data answers fell to 1/5. The eval caught it; the fix and a regression test brought it back to 5/5 in every run.'],
-  ['Planner misrouting', 'An HRA question went to small talk in 2 of 5 runs. With the current setup it routes correctly in all 5.'],
+  ['Planner misrouting', 'An HRA question went to small talk in 2 of 5 runs. The current setup routed it correctly in all 5 baseline runs, but it still slips occasionally (1 of 3 runs on 2026-09-25).'],
+  ['A manager counted the team\'s leave as their own', 'Asked "how many casual leaves do I have left?", Rahul (a manager) was told 0 instead of 12: his view includes the team\'s leave and the SQL didn\'t filter to him. The golden set only asked as a non-manager, so it never showed. Fixed with an explicit rule plus a golden case asked as a manager.'],
+  ['Valid SQL, wrong question', 'One CI run summed every leave type for a casual-leave balance, and compared an employee\'s name with ids for "waiting for my approval". Both were sometimes-wrong, not always-wrong: hints and a worked example in the SQL prompt fixed them in 3 of 3 re-runs.'],
 ];
 
 const LIMITS = [
@@ -109,7 +111,7 @@ export default function HowItWorks() {
         <div className="card">
           <h2>Try these in Disha</h2>
           <p style={{ marginTop: 0 }}>
-            <a href="/login">Sign in as Rahul</a>, open the <b>Disha ✨</b> tab and ask. The line under each answer
+            <a href="/login">Sign in as Rahul</a>, tap the chat button in the bottom-right corner and ask. The line under each answer
             shows the route it took.
           </p>
           <div className="tbl">
@@ -166,9 +168,9 @@ export default function HowItWorks() {
         <div className="card">
           <h2>Evaluation results</h2>
           <p style={{ marginTop: 0 }}>
-            20 golden questions (policy, personal data, safety, off-topic) sent through the running API, 5 full runs
+            21 golden questions (policy, personal data, safety, off-topic) sent through the running API, 5 full runs
             averaged. Route, data and safety checks are deterministic; the rest are judged by an LLM (DeepEval,
-            gpt-5.4-mini). A compare script gates changes against this baseline.
+            gpt-5.4-mini). Every push to main re-runs the deterministic checks against this baseline before it can deploy.
           </p>
           <div className="tbl">
             <table>

@@ -113,10 +113,10 @@
       it cannot answer about anyone else's.</p>
     <div class="facts">
       <div class="tile"><b>9</b><span>screens</span></div>
-      <div class="tile"><b>35</b><span>API endpoints</span></div>
+      <div class="tile"><b>36</b><span>API endpoints</span></div>
       <div class="tile"><b>4</b><span>assistant routes</span></div>
       <div class="tile"><b>6</b><span>policy documents</span></div>
-      <div class="tile"><b>3,152</b><span>seeded attendance days</span></div>
+      <div class="tile"><b>21</b><span>golden eval questions</span></div>
       <div class="tile"><b>0</b><span>npm/pip frameworks in the UI</span></div>
     </div>
   </header>
@@ -132,6 +132,7 @@
       <li><a href="#data">Data model</a></li>
       <li><a href="#files">Where things live</a></li>
       <li><a href="#run">Running it</a></li>
+      <li><a href="#ship">Shipping it</a></li>
       <li><a href="#next">Not built yet</a></li>
     </ol>
   </nav>
@@ -146,7 +147,7 @@
         team's leave and expense requests, which they approve or reject. An <strong>admin</strong> (HR) sees everyone,
         adds and deactivates employees, fixes attendance, enters payslips, and maintains the holiday calendar and
         announcements.</p>
-      <p>On top sits <strong>Disha</strong>, a chat tab. Ask "how many casual leaves do I have left?" and it queries
+      <p>On top sits <strong>Disha</strong>, a chat button in the corner of every screen. Ask "how many casual leaves do I have left?" and it queries
         the database; ask "how much notice for earned leave?" and it reads the company policy; ask for a colleague's
         salary and it refuses. The rest of this page is mostly about how that last sentence is guaranteed rather
         than hoped for.</p>
@@ -158,17 +159,19 @@
         <table>
           <thead><tr><th>Layer</th><th>Technology</th><th>Where it lives / what it does here</th></tr></thead>
           <tbody>
-            <tr><td>Web app</td><td>Next.js 16, React 19</td><td><code>frontend/app/(app)/*/page.js</code> — one file per screen; no UI framework, plain CSS</td></tr>
-            <tr><td>API</td><td>FastAPI</td><td><code>backend/app/main.py</code> — 35 endpoints, every one permission-checked</td></tr>
+            <tr><td>Web app</td><td>Next.js 16, React 19</td><td><code>frontend/app/(app)/*/page.js</code> — one file per screen; Disha is a popup from <code>components/DishaChat.js</code>; no UI framework, plain CSS</td></tr>
+            <tr><td>API</td><td>FastAPI</td><td><code>backend/app/main.py</code> — 36 endpoints, every one permission-checked</td></tr>
             <tr><td>Database</td><td>SQLAlchemy Core → SQLite</td><td><code>backend/app/db.py</code> — one file, <code>disha.db</code>; swap to PostgreSQL by setting <code>DATABASE_URL</code></td></tr>
             <tr><td>Sessions</td><td><code>scrypt</code> + cookie</td><td>Hashed passwords, random token, <code>HttpOnly</code> + <code>SameSite=Strict</code>, 7-day expiry</td></tr>
             <tr><td>Agent</td><td>LangGraph</td><td><code>backend/app/agent.py</code> — planner, retriever, SQL, responder as graph nodes</td></tr>
-            <tr><td>Models</td><td>OpenAI</td><td><code>gpt-5.5</code> answers; <code>gpt-5.4-mini</code> plans, writes SQL and runs the rails</td></tr>
-            <tr><td>Policy search</td><td>Qdrant Cloud + <code>text-embedding-3-small</code></td><td><code>backend/app/knowledge.py</code> — 13 chunks from <code>data/policies/</code></td></tr>
+            <tr><td>Models</td><td>OpenAI</td><td><code>gpt-5.4-mini</code> answers, plans, writes SQL and runs the rails; <code>gpt-4.1-mini</code> reranks policy passages</td></tr>
+            <tr><td>Policy search</td><td>Qdrant Cloud + <code>text-embedding-3-small</code></td><td><code>backend/app/knowledge.py</code> — 50 chunks from <code>data/policies/</code>; repeat questions are served from an in-memory cache</td></tr>
             <tr><td>Guardrails</td><td>NeMo Guardrails</td><td><code>backend/app/rails.py</code> — self-check on the question and on the answer</td></tr>
             <tr><td>Tracing</td><td>Pydantic Logfire + LangSmith</td><td>A span per node, and every prompt; silent when the tokens are unset</td></tr>
-            <tr><td>Evals</td><td>DeepEval</td><td><code>backend/evals/</code> — 17 golden questions judged against the running API</td></tr>
-            <tr><td>Tests</td><td>Node + Python, no framework</td><td><code>test.mjs</code> (API over HTTP), <code>backend/test_agent.py</code> (sandbox + routing)</td></tr>
+            <tr><td>Evals</td><td>DeepEval</td><td><code>backend/evals/</code> — 21 golden questions against the running API; the deterministic half gates every deploy</td></tr>
+            <tr><td>Tests</td><td>Node + Python, no framework</td><td><code>test.mjs</code> (API over HTTP), <code>backend/test_agent.py</code> (sandbox + routing), <code>backend/test_knowledge.py</code> (chunking, rerank, cache)</td></tr>
+            <tr><td>Hosting</td><td>AWS EC2 + Docker Compose + Caddy</td><td><code>deploy/docker-compose.yml</code> — HTTPS with a Let's Encrypt certificate; images in ECR</td></tr>
+            <tr><td>CI/CD</td><td>GitHub Actions</td><td><code>.github/workflows/ci-cd.yml</code> — test → evaluate → push → deploy on every push to main</td></tr>
           </tbody>
         </table>
       </div>
@@ -305,7 +308,7 @@
 
             <rect x="470" y="176" width="170" height="60" rx="9" fill="none" stroke="#6D4AFF" stroke-width="1.6"></rect>
             <text x="555" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="#6D4AFF">Policy search</text>
-            <text x="555" y="218" text-anchor="middle" font-size="11" fill="#6D4AFF" opacity=".85">Qdrant · 5 passages</text>
+            <text x="555" y="218" text-anchor="middle" font-size="11" fill="#6D4AFF" opacity=".85">Qdrant · 12 → rerank ≤4</text>
 
             <rect x="470" y="316" width="170" height="60" rx="9" fill="none" stroke="#0F766E" stroke-width="1.6"></rect>
             <text x="555" y="340" text-anchor="middle" font-size="13" font-weight="600" fill="#0F766E">Text-to-SQL</text>
@@ -313,7 +316,7 @@
 
             <rect x="686" y="176" width="104" height="60" rx="9" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
             <text x="738" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Responder</text>
-            <text x="738" y="218" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">gpt-5.5</text>
+            <text x="738" y="218" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">streamed</text>
 
             <rect x="686" y="286" width="104" height="56" rx="9" fill="none" stroke="#C0392B" stroke-width="1.6"></rect>
             <text x="738" y="308" text-anchor="middle" font-size="13" font-weight="600" fill="#C0392B">Output rail</text>
@@ -343,11 +346,12 @@
             <text x="368" y="262" text-anchor="middle" font-size="11" fill="currentColor" opacity=".75">gpt-5.4-mini</text>
           </svg>
         </div>
-        <figcaption>Both rails are NeMo self-checks. The planner's job is mostly to avoid work: small talk never
-          reaches Qdrant or the database.</figcaption>
+        <figcaption>Both rails are NeMo self-checks. The input rail and the planner actually run at the same time, and a
+          refusal discards the plan. The planner's job is mostly to avoid work: small talk never reaches Qdrant or the
+          database. The answer streams word by word; the output rail checks the finished text and can still swap it.</figcaption>
       </figure>
 
-      <p>Each answer carries its route and the steps it took, and the chat screen prints them under the reply —
+      <p>Each answer carries its route and the steps it took, and the chat panel prints them under the reply —
         <span class="pill p-chat">conversational</span> <span class="pill p-policy">policy</span>
         <span class="pill p-data">data</span> <span class="pill p-stop">blocked</span> — so nobody has to guess
         whether a number came from the database or from a document.</p>
@@ -413,8 +417,9 @@
             <text x="423" y="128" text-anchor="middle" font-size="10.5" fill="#0F766E">passes</text>
           </svg>
         </div>
-        <figcaption>Three independent layers: the views filter the rows, the validator filters the query, and the row
-          limit caps the result. Defeating one still leaves the other two.</figcaption>
+        <figcaption>Four independent layers: the views filter the rows, the validator filters the query, the row
+          limit caps the result, and the database itself refuses a direct read of a real table (a SQLite authorizer,
+          or a NOLOGIN role on PostgreSQL). Defeating one still leaves the other three.</figcaption>
       </figure>
 
       <p>Two details matter more than they look. The sandbox takes a connection that is <strong>never reused</strong>,
@@ -458,7 +463,7 @@
     <section id="files">
       <h2>Where things live</h2>
 <pre><b>backend/</b>
-  app/main.py        <b>35 endpoints; the permission rules live here</b>
+  app/main.py        <b>36 endpoints; the permission rules live here</b>
   app/db.py          <b>schema, password hashing, working-day maths</b>
   app/agent.py       <b>the LangGraph graph in the diagram above</b>
   app/safe_sql.py    <b>per-employee views + query validator</b>
@@ -466,11 +471,15 @@
   app/rails.py       <b>NeMo input/output checks</b>
   app/seed.py        <b>20 dummy employees, Jan 2026 → yesterday</b>
   test_agent.py      <b>sandbox + routing checks, no API calls</b>
+  evals/             <b>golden questions, baseline, compare</b>
 <b>frontend/</b>
-  app/(app)/*/page.js  <b>one file per screen, incl. disha/</b>
-  components/Shell.js  <b>nav, session, the admin "view employee" filter</b>
+  app/(app)/*/page.js  <b>one file per screen</b>
+  components/Shell.js  <b>nav, session, admin filter, the Disha chat button</b>
+  components/DishaChat.js  <b>the chat itself, shown in the popup</b>
 <b>data/policies/*.md</b>  <b>the six documents Disha quotes</b>
 <b>test.mjs</b>            <b>API suite over real HTTP</b>
+<b>deploy/</b>             <b>docker-compose.yml for the server</b>
+<b>.github/workflows/</b>  <b>the CI/CD pipeline</b>
 </pre>
       <p>Two rules keep the codebase honest: permission decisions exist in exactly one place per record type, and the
         assistant calls those same paths rather than its own.</p>
@@ -488,9 +497,28 @@ python test_agent.py &amp;&amp; node ../test.mjs   <b># both suites</b>
       <p>Secrets come from <code>backend/.env</code>: <code>OPENAI_API_KEY</code> is required for chat,
         <code>QDRANT_*</code> for policy answers, <code>LOGFIRE_TOKEN</code> for tracing. Each is optional in the sense
         that the app degrades rather than crashes — without Qdrant, Disha says it can't find the policy; without a
-        model key, the chat tab reports it isn't set up, and the rest of the app is unaffected.</p>
+        model key, the chat panel reports it isn't set up, and the rest of the app is unaffected.</p>
       <p>Seeded logins are <code>firstname.lastname@company.com</code> with the password <code>password123</code> —
         <code>sneha.iyer</code> is a regular employee, <code>rahul.sharma</code> manages six people.</p>
+    </section>
+
+    <section id="ship">
+      <h2>Shipping it</h2>
+      <p>Every push to <code>main</code> runs one GitHub Actions pipeline, and each stage only starts if the one before
+        it passed. A pull request stops after the first two, so nothing reaches the server until it is merged.</p>
+<pre><b>1 test</b>       test_agent.py, test_knowledge.py, test.mjs, frontend build
+<b>2 evaluate</b>   seeded API + the golden questions, compared with the baseline
+             <b>a safety drop blocks; a quality or latency drop warns</b>
+<b>3 push</b>       backend and frontend images to AWS ECR, tagged with the commit
+<b>4 deploy</b>     SSH to the EC2 box, docker compose up, health check over HTTPS
+</pre>
+      <p>On the server, Caddy terminates HTTPS (a Let's Encrypt certificate it renews itself) and passes requests to
+        the Next.js container, which proxies <code>/api/*</code> to FastAPI exactly as in the diagram above. SQLite
+        lives on a Docker volume, so it survives redeploys. Keys reach the server from GitHub secrets at deploy time;
+        none are in the repository.</p>
+      <p>The evaluate stage runs only the checks that need no judge (route, the number in a data answer, safety
+        refusals, reliability, latency), because they give the same result every run. The judged quality scores stay
+        a local, five-run exercise: one judged run moves too much to gate on.</p>
     </section>
 
     <section id="next">
@@ -503,16 +531,20 @@ python test_agent.py &amp;&amp; node ../test.mjs   <b># both suites</b>
         <li><strong>The chat rate limit is per process.</strong> Eight questions a minute and fifty an hour per
           employee, counted in memory — correct for one API worker, and it needs a shared counter before running
           several.</li>
-        <li><strong>The eval set is small.</strong> Seventeen golden questions, scored on every run: route, the number
+        <li><strong>The eval set is small.</strong> Twenty-one golden questions, scored on every run: route, the number
           in a data answer (checked against the database), safety refusals, and DeepEval's faithfulness, relevancy,
           contextual precision/recall and correctness. It catches regressions; it is not broad coverage yet.</li>
-        <li><strong>One server, one file.</strong> SQLite is fine for a few hundred employees; PostgreSQL is a
-          settings change when it isn't.</li>
+        <li><strong>One server, one file, no backup yet.</strong> SQLite on a single EC2 volume is fine for a few
+          hundred employees, but losing that disk loses the data. PostgreSQL (or a nightly copy to S3) is the next
+          operational step, and a settings change in the app.</li>
+        <li><strong>The SQL writer is not perfectly consistent.</strong> On the golden set it gets roughly one data
+          answer in sixty wrong, by writing a query that is valid but asks the wrong thing. The sandbox makes that a
+          wrong number, never a leak, and the eval gate catches it when it repeats.</li>
       </ul>
       <p>The sample policies in <code>data/policies/</code> are written to match the app's real behaviour, but they
         are samples. Replace them with the approved versions before anyone relies on an answer.</p>
     </section>
   </main>
 
-  <footer>DISHA HR · Next.js · FastAPI · SQLite · LangGraph · Qdrant · NeMo Guardrails · Logfire</footer>
+  <footer>DISHA HR · Next.js · FastAPI · SQLite · LangGraph · Qdrant · NeMo Guardrails · Logfire · AWS · GitHub Actions</footer>
 </div>
