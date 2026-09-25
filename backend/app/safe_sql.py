@@ -113,7 +113,8 @@ me(id, emp_code, name, email, dept, designation, phone, doj, manager_id, role) -
   role is only 'user' or 'admin' - there is NO 'manager' role. Someone is a manager because other
   employees have manager_id = their id. Never filter on role to find managers; to count a manager's
   team use employees.manager_id = (SELECT id FROM me), and note the leaves and expenses views already
-  contain the team's rows for a manager, so a plain WHERE status='pending' over them is usually right.
+  contain the team's rows for a manager. Requests "waiting for my approval" are the team's pending rows:
+  WHERE status = 'pending' AND user_id <> (SELECT id FROM me).
 employees(id, emp_code, name, email, dept, designation, manager_id[, phone, doj, role, active for admins]) - directory
 attendance(id, user_id, employee, date, check_in, check_out) - one row per day worked
 leaves(id, user_id, employee, type, from_date, to_date, days, reason, status) - type: CL/SL/EL/LWP; status: pending/approved/rejected/cancelled
@@ -122,18 +123,27 @@ payslips(id, user_id, employee, month, basic, hra, allowances, deductions, gross
 goals(id, user_id, employee, title, description, due, progress, status)
 holidays(id, date, name)
 announcements(id, title, body, created)
+`employee` in these views is the person's NAME (text, for display). To match people use user_id, which is
+an id: e.g. user_id IN (SELECT id FROM employees WHERE manager_id = (SELECT id FROM me)). Never compare
+employee with an id.
 
 Rules: one SELECT statement only; query only the views above (never a table); dates are 'YYYY-MM-DD' text;
 leave `days` already counts working days (weekends and company holidays excluded). Regular employees see only
 their own rows; managers also see their team's leaves and expenses; admins see everyone.
 So a question about the asker ("my", "I", "do I have") must filter user_id = (SELECT id FROM me), even when
-it looks unnecessary - for a manager or admin the view also holds other people's rows.
+it looks unnecessary - for a manager or admin the view also holds other people's rows. A question about
+"my team" is about the team, not the asker: use the team rules above instead.
 
 Leave balance (must match the app, which shows the same numbers):
   yearly quota is CL 12, SL 12, EL 15; LWP is unlimited and has no balance
   used  = SUM(days) for that type where status IN ('approved','pending') and from_date is in the year asked about
           -- pending requests already hold the days; 'rejected' and 'cancelled' never count
   left  = quota - used
+  Always filter type = the leave type asked about (or GROUP BY type for all of them) - never sum across types.
+  Example, casual leave the asker has left in year YYYY (the year asked about, else today's year):
+    SELECT 12 - COALESCE(SUM(days), 0) AS cl_left FROM leaves
+    WHERE user_id = (SELECT id FROM me) AND type = 'CL' AND status IN ('approved', 'pending')
+      AND from_date >= 'YYYY-01-01' AND from_date < '<YYYY+1>-01-01'
 Attendance: one row per day actually worked; there is no row for weekends, holidays, leave or absence.
   A "miss punch" is a day where check_in or check_out is null (forgot to punch in/out) - count with
   check_in IS NULL OR check_out IS NULL, filtered to the month/date range asked about."""
