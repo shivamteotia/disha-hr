@@ -97,6 +97,9 @@ question -> input rail ┐                                        (graph: gather
   or `flashrank` (local ONNX cross-encoder, ~0.3s faster, but it dropped the answering chunk on the planner's
   rewritten queries — see `evals/baselines/RESULTS.md`); both fail open to vector order. API/Qdrant clients
   are cached per process (`knowledge._clients`) and warmed at startup (`agent.warm()`).
+  Question embeddings are cached with no expiry (`_embed_query`) and search results per question for
+  `SEARCH_CACHE_SECONDS` (default 600) - in memory, per worker, so a `--wipe` reindex shows up within that
+  window. A failed rerank is never cached. Data-route answers/SQL are deliberately not cached (per user, live data).
 - The **data** route generates SQL but only against **temp views already scoped to the asking employee**
   (`backend/app/safe_sql.py`) — one SELECT, whitelisted view names, forced row limit, a connection that is
   never pooled. This is the load-bearing security boundary for the agent: it must never gain access to raw
