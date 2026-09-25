@@ -11,10 +11,21 @@ services:
 
   frontend:
     image: ${IMAGE}:frontend-${TAG}
-    ports:
-      - "80:8080"
     depends_on: [backend]
+    restart: unless-stopped
+
+  # TLS in front of everything: Let's Encrypt cert for DOMAIN, auto-renewed, and HTTP -> HTTPS redirect
+  caddy:
+    image: caddy:2
+    command: caddy reverse-proxy --from ${DOMAIN} --to frontend:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy:/data   # certificates; keeping them across redeploys avoids Let's Encrypt rate limits
+    depends_on: [frontend]
     restart: unless-stopped
 
 volumes:
   data:
+  caddy:
