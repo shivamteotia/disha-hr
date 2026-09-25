@@ -3,6 +3,7 @@
 # Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, EC2_SSH_KEY (the .pem), BACKEND_ENV (contents of
 #          backend/.env), ADMIN_PASSWORD, DATABASE_URL (optional; unset = SQLite on the box's /data volume)
 # Variables: EC2_HOST
+# AWS (one-time, admin): S3 bucket BACKUP_BUCKET + an instance role that may s3:PutObject into it - see README
 name: CI/CD
 
 on:
@@ -109,6 +110,7 @@ jobs:
       HOST: ubuntu@${{ vars.EC2_HOST }}
       DOMAIN: ${{ vars.EC2_HOST }}.sslip.io   # sslip.io resolves <ip>.sslip.io to <ip>, so Let's Encrypt can issue a cert
       IMAGE: ${{ needs.push.outputs.image }}
+      BACKUP_BUCKET: dishahr-backups-851563824142   # written by the instance role, see deploy/backup.sh
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
@@ -133,13 +135,17 @@ jobs:
             echo "HTTPS=true"
           } >> backend.env
       - name: Copy compose file and env
-        run: scp -i ~/key.pem deploy/docker-compose.yml backend.env "$HOST:~/"
+        run: scp -i ~/key.pem deploy/docker-compose.yml deploy/backup.sh backend.env "$HOST:~/"
       - name: Pull and restart
         run: |
           aws ecr get-login-password | ssh -i ~/key.pem "$HOST" "
             set -e
             command -v docker >/dev/null || curl -fsSL https://get.docker.com | sudo sh
             sudo docker login -u AWS --password-stdin ${IMAGE%%/*}
+            sudo install -m 755 backup.sh /usr/local/bin/disha-backup
+            # 21:30 UTC = 03:00 IST
+            echo '30 21 * * * root /usr/local/bin/disha-backup $BACKUP_BUCKET >> /var/log/disha-backup.log 2>&1' | sudo tee /etc/cron.d/disha-backup >/dev/null
+            sudo /usr/local/bin/disha-backup $BACKUP_BUCKET || echo '::warning::Pre-deploy backup to S3 failed - see deploy/backup.sh (instance role and bucket)'
             # not sudo -E: that keeps HOME=/home/ubuntu and loses root's ECR login
             sudo IMAGE=$IMAGE TAG=$GITHUB_SHA DOMAIN=$DOMAIN docker compose pull
             sudo IMAGE=$IMAGE TAG=$GITHUB_SHA DOMAIN=$DOMAIN docker compose up -d --remove-orphans

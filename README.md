@@ -89,6 +89,36 @@ ECR keeps the 10 newest backend and frontend images (`deploy/ecr-lifecycle.json`
 `aws ecr put-lifecycle-policy --repository-name dishahr --lifecycle-policy-text file://deploy/ecr-lifecycle.json`),
 so rollback reaches 10 deploys back.
 
+### Backups (S3)
+`deploy/backup.sh` snapshots the SQLite file with SQLite's online backup API (consistent while the app writes),
+gzips it and uploads it to `s3://dishahr-backups-851563824142/disha-<UTC time>.db.gz`. The deploy job installs it
+with a cron entry for 03:00 IST every night, and also runs it before every deploy (a failed backup warns, it
+doesn't block). It uploads with an EC2 instance role that may only `s3:PutObject`, so nothing on the box can read or
+delete old backups, and the bucket expires copies after 30 days. Log on the box: `/var/log/disha-backup.log`.
+
+One-time AWS setup (needs an admin login, e.g. AWS CloudShell; the CI IAM user can't create buckets or roles):
+```
+B=dishahr-backups-851563824142
+aws s3api create-bucket --bucket $B --region ap-south-1 --create-bucket-configuration LocationConstraint=ap-south-1
+aws s3api put-public-access-block --bucket $B --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+aws s3api put-bucket-lifecycle-configuration --bucket $B --lifecycle-configuration '{"Rules":[{"ID":"expire-30d","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":30}}]}'
+aws iam create-role --role-name DishaBackup --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+aws iam put-role-policy --role-name DishaBackup --policy-name s3-backup-put --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:PutObject","Resource":"arn:aws:s3:::'$B'/*"}]}'
+aws iam create-instance-profile --instance-profile-name DishaBackup
+aws iam add-role-to-instance-profile --instance-profile-name DishaBackup --role-name DishaBackup
+sleep 10   # the new profile takes a few seconds to become usable
+aws ec2 associate-iam-instance-profile --region ap-south-1 --instance-id i-0e957a7cf04d7a11d --iam-instance-profile Name=DishaBackup
+```
+
+Restore (download with an admin login, then on the box):
+```
+aws s3 cp s3://dishahr-backups-851563824142/disha-<time>.db.gz . && gunzip disha-<time>.db.gz
+scp -i dishahr.pem disha-<time>.db ubuntu@13.201.82.67:~/
+# on the box:
+c=$(sudo docker ps -qf label=com.docker.compose.service=backend)
+sudo docker stop $c && sudo docker cp ~/disha-<time>.db $c:/data/disha.db && sudo docker start $c
+```
+
 ## Disha assistant (agentic)
 
 ```
@@ -183,7 +213,7 @@ reject.)
 | Documents | upload / download own (≤7 MB) | any employee |
 
 ## Roadmap
-Next: **backups** (PostgreSQL, or at least a nightly copy of the SQLite file to S3; today the data lives on one EC2
+Next: **PostgreSQL** (backups are a nightly SQLite copy to S3 today, see Deploy; the data itself still lives on one EC2
 volume); a least-privilege IAM user for CI; **Disha actions** (apply for leave, approve a
 request from chat, with a confirmation step).
 
