@@ -35,3 +35,15 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--b);white-space:n
 .bubble.error{background:#fde2e2;color:var(--bad)}
 .meta{font-size:11px;color:var(--m);margin:2px 0 6px 4px;max-width:85%}
 @media print{header,nav,.noprint{display:none!important}.card{border:0}}
+.fab{position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;border:0;background:var(--p);color:#fff;cursor:pointer;display:grid;place-items:center;z-index:8;transition:transform .2s;animation:ring 2.4s ease-out infinite}
+.fab:hover{transform:scale(1.08)}.fab:active{transform:scale(.95)}
+.fab.shown{animation:none;box-shadow:0 6px 18px rgba(36,81,183,.4)}
+.fab svg{transition:transform .25s}.fab.shown svg{transform:rotate(90deg)}
+@keyframes ring{0%{box-shadow:0 6px 18px rgba(36,81,183,.4),0 0 0 0 rgba(36,81,183,.45)}70%,100%{box-shadow:0 6px 18px rgba(36,81,183,.4),0 0 0 16px rgba(36,81,183,0)}}
+.chat-pop{display:none;position:fixed;right:20px;bottom:88px;width:min(380px,calc(100vw - 32px));z-index:8}
+.chat-pop.shown{display:block;animation:pop .2s ease-out;transform-origin:bottom right}
+@keyframes pop{from{opacity:0;transform:scale(.9) translateY(12px)}}
+.chat-pop .card{margin:0;box-shadow:0 12px 40px rgba(0,0,0,.18)}
+.chat-pop .chat-log{height:min(420px,calc(100dvh - 330px));min-height:120px}
+@media(max-width:500px){.fab{right:16px;bottom:16px}.chat-pop{right:16px;bottom:84px}}
+@media(prefers-reduced-motion:reduce){.fab,.chat-pop.shown,.fab svg{animation:none;transition:none}}
