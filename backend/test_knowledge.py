@@ -96,4 +96,46 @@ class BrokenRanker:
 assert knowledge.flash_rerank("q", HITS, keep=2, ranker=BrokenRanker()) == HITS[:2], "must fall back to vector order"
 assert knowledge.flash_rerank("q", [], keep=2, ranker=BrokenRanker()) == []
 
+# search() caching: a repeat question skips embedding, Qdrant and rerank; a rerank failure is not cached
+from types import SimpleNamespace as NS  # noqa: E402
+
+calls = {"embed": 0, "qdrant": 0, "rank": 0}
+
+
+class FakeEmbeddings:
+    def create(self, model, input):
+        calls["embed"] += 1
+        return NS(data=[NS(embedding=[0.1, 0.2])])
+
+
+class FakeQdrant:
+    def query_points(self, **kw):
+        calls["qdrant"] += 1
+        return NS(points=[NS(payload={"text": h["text"], "source": h["source"]}, score=0.5) for h in HITS])
+
+
+rank_ok = [False]
+
+
+def fake_rank(query, hits, keep=4, ask=None):
+    calls["rank"] += 1
+    if not rank_ok[0]:
+        raise RuntimeError("rerank down")
+    return hits[1:2]
+
+
+knowledge._clients = lambda: (NS(embeddings=FakeEmbeddings()), FakeQdrant())
+knowledge._rerank_strict = fake_rank
+knowledge.RERANKER = "llm"
+
+first = knowledge.search("hra?", limit=2)
+assert [h["text"] for h in first] == [HITS[0]["text"], HITS[1]["text"]], "rerank failure falls back to vector order"
+rank_ok[0] = True
+second = knowledge.search("hra?", limit=2)
+assert [h["text"] for h in second] == [HITS[1]["text"]], "the fallback must not have been cached"
+second[0]["text"] = "edited by a caller"
+third = knowledge.search("  hra?  ", limit=2)
+assert [h["text"] for h in third] == [HITS[1]["text"]], "callers get copies, and whitespace doesn't miss the cache"
+assert calls == {"embed": 1, "qdrant": 1, "rank": 2}, calls
+
 print("knowledge checks passed")

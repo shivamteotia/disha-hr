@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 try:  # this module also runs as a CLI, so load backend/.env here too
@@ -28,6 +29,8 @@ FLASHRANK_MODEL = os.environ.get("FLASHRANK_MODEL", "ms-marco-MiniLM-L-12-v2")
 EMBED_DIM = 1536      # text-embedding-3-small; 3-large is 3072
 MAX_CHARS = 700       # one rule per chunk: bigger chunks dilute the embedding
 CANDIDATES = 12       # fetched from Qdrant, then reranked down to the caller's limit
+# ponytail: in-process, per worker; a reindex (`--wipe`) from another process shows up after at most this long
+SEARCH_TTL = int(os.environ.get("SEARCH_CACHE_SECONDS", 600))
 
 # Every policy opens with the same disclaimer and an Owner/Version line. That text is generic
 # HR-flavoured boilerplate: it matches almost any question and answers none, so it used to win
@@ -73,6 +76,16 @@ def rerank(query: str, hits: list[dict], keep: int = 4, ask=None) -> list[dict]:
     Fails open: any error, bad JSON or no usable index falls back to vector order, because a
     ranking problem must never stop the assistant answering.
     """
+    try:
+        return _rerank_strict(query, hits, keep, ask)
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning("rerank unavailable, using vector order: %s", e)
+        return hits[:keep]
+
+
+def _rerank_strict(query: str, hits: list[dict], keep: int = 4, ask=None) -> list[dict]:
+    """rerank() without the fallback: raises if the model call fails, so search() never caches a fallback."""
     if not hits:
         return []
     ask = ask or _ask_model
@@ -81,14 +94,9 @@ def rerank(query: str, hits: list[dict], keep: int = 4, ask=None) -> list[dict]:
               f"List the numbers of the passages needed to answer the question, most useful first. "
               f"Leave out passages that are only about the same topic but don't help answer it. "
               f'Reply as JSON: {{"order": [numbers]}}')
-    try:
-        order = json.loads(ask(prompt))["order"]
-        ranked = list({i: hits[i] for i in order if isinstance(i, int) and 0 <= i < len(hits)}.values())
-        return ranked[:keep] or hits[:keep]
-    except Exception as e:  # noqa: BLE001
-        import logging
-        logging.getLogger(__name__).warning("rerank unavailable, using vector order: %s", e)
-        return hits[:keep]
+    order = json.loads(ask(prompt))["order"]
+    ranked = list({i: hits[i] for i in order if isinstance(i, int) and 0 <= i < len(hits)}.values())
+    return ranked[:keep] or hits[:keep]
 
 
 def flash_rerank(query: str, hits: list[dict], keep: int = 4, ranker=None) -> list[dict]:
@@ -96,18 +104,22 @@ def flash_rerank(query: str, hits: list[dict], keep: int = 4, ranker=None) -> li
     half as well, at most `keep`. Relative, not a fixed cutoff: the right passage scores 0.99 for one
     question and 0.006 for another, so only the ratio within a question means anything.
     Fails open to vector order, like rerank()."""
-    if not hits:
-        return []
     try:
-        from flashrank import RerankRequest
-        scored = (ranker or _flashranker()).rerank(
-            RerankRequest(query=query, passages=[{"id": i, "text": h["text"]} for i, h in enumerate(hits)]))
-        top = scored[0]["score"]
-        return [hits[s["id"]] for s in scored if s["score"] >= top / 2][:keep]
+        return _flash_rerank_strict(query, hits, keep, ranker)
     except Exception as e:  # noqa: BLE001
         import logging
         logging.getLogger(__name__).warning("flashrank unavailable, using vector order: %s", e)
         return hits[:keep]
+
+
+def _flash_rerank_strict(query: str, hits: list[dict], keep: int = 4, ranker=None) -> list[dict]:
+    if not hits:
+        return []
+    from flashrank import RerankRequest
+    scored = (ranker or _flashranker()).rerank(
+        RerankRequest(query=query, passages=[{"id": i, "text": h["text"]} for i, h in enumerate(hits)]))
+    top = scored[0]["score"]
+    return [hits[s["id"]] for s in scored if s["score"] >= top / 2][:keep]
 
 
 _ranker = None
@@ -154,19 +166,46 @@ def embed(texts: list[str]) -> list[list[float]]:
     return out
 
 
+@functools.lru_cache(maxsize=1024)
+def _embed_query(query: str) -> tuple[float, ...]:
+    """A question's embedding never changes for a given model, so it is cached with no expiry."""
+    openai_client, _ = _clients()
+    return tuple(openai_client.embeddings.create(model=EMBED_MODEL, input=query).data[0].embedding)
+
+
+# `bucket` is the SEARCH_TTL window, so every entry expires when the window rolls over. An exception is
+# never cached by lru_cache, so a failed Qdrant or rerank call is retried on the next question.
+@functools.lru_cache(maxsize=512)
+def _candidates(query: str, bucket: int) -> tuple[dict, ...]:
+    _, qdrant = _clients()
+    hits = qdrant.query_points(collection_name=COLLECTION, query=list(_embed_query(query)), limit=CANDIDATES,
+                               with_payload=True).points
+    return tuple({"text": h.payload.get("text", ""), "source": h.payload.get("source", "policy"),
+                  "score": round(h.score, 3)} for h in hits)
+
+
+@functools.lru_cache(maxsize=512)
+def _ranked(query: str, limit: int, bucket: int) -> tuple[dict, ...]:
+    strict = _flash_rerank_strict if RERANKER == "flashrank" else _rerank_strict
+    return tuple(strict(query, list(_candidates(query, bucket)), keep=limit))
+
+
 def search(query: str, limit: int = 4) -> list[dict]:
-    """Return [{text, source, score}] for the best policy chunks; [] if Qdrant isn't configured."""
+    """Return [{text, source, score}] for the best policy chunks; [] if Qdrant isn't configured.
+    Results are cached per question for SEARCH_TTL seconds (embedding + Qdrant + rerank skipped on a hit)."""
+    import logging
+    query, bucket = query.strip(), int(time.time() // max(SEARCH_TTL, 1))
     try:
-        openai_client, qdrant = _clients()
-        vector = openai_client.embeddings.create(model=EMBED_MODEL, input=query).data[0].embedding
-        hits = qdrant.query_points(collection_name=COLLECTION, query=vector, limit=CANDIDATES, with_payload=True).points
-        candidates = [{"text": h.payload.get("text", ""), "source": h.payload.get("source", "policy"),
-                       "score": round(h.score, 3)} for h in hits]
-        return (flash_rerank if RERANKER == "flashrank" else rerank)(query, candidates, keep=limit)
+        hits = _candidates(query, bucket)
     except Exception as e:  # noqa: BLE001 - the agent answers without policy context rather than failing
-        import logging
         logging.getLogger(__name__).warning("policy search unavailable: %s", e)
         return []
+    try:
+        ranked = _ranked(query, limit, bucket)
+    except Exception as e:  # noqa: BLE001 - a ranking problem must never stop the assistant answering
+        logging.getLogger(__name__).warning("rerank unavailable, using vector order: %s", e)
+        ranked = hits[:limit]
+    return [dict(h) for h in ranked]  # copies: callers must not be able to edit the cached entries
 
 
 def ingest(wipe: bool = False) -> int:
