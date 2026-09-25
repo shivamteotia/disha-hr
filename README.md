@@ -85,6 +85,9 @@ Run a command on the server (e.g. seed the demo data once):
 ssh -i dishahr.pem ubuntu@13.201.82.67 "sudo docker compose exec -T backend python -m app.seed"
 ```
 Roll back: re-run an older successful workflow run from the Actions tab (its images are still in ECR).
+ECR keeps the 10 newest backend and frontend images (`deploy/ecr-lifecycle.json`, applied with
+`aws ecr put-lifecycle-policy --repository-name dishahr --lifecycle-policy-text file://deploy/ecr-lifecycle.json`),
+so rollback reaches 10 deploys back.
 
 ## Disha assistant (agentic)
 
@@ -181,7 +184,7 @@ reject.)
 
 ## Roadmap
 Next: **backups** (PostgreSQL, or at least a nightly copy of the SQLite file to S3; today the data lives on one EC2
-volume); a least-privilege IAM user for CI; an ECR lifecycle rule; **Disha actions** (apply for leave, approve a
+volume); a least-privilege IAM user for CI; **Disha actions** (apply for leave, approve a
 request from chat, with a confirmation step).
 
 Later: email/WhatsApp notifications; payroll engine (PF/ESI/PT/TDS, Form 16); geo/selfie attendance, shifts;

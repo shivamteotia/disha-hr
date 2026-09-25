@@ -1,0 +1,22 @@
+{
+  "rules": [
+    {
+      "rulePriority": 1,
+      "description": "Keep the 10 newest backend images (10 deploys to roll back to)",
+      "selection": { "tagStatus": "tagged", "tagPrefixList": ["backend-"], "countType": "imageCountMoreThan", "countNumber": 10 },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 2,
+      "description": "Keep the 10 newest frontend images",
+      "selection": { "tagStatus": "tagged", "tagPrefixList": ["frontend-"], "countType": "imageCountMoreThan", "countNumber": 10 },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 3,
+      "description": "Drop untagged layers left behind by re-pushed tags",
+      "selection": { "tagStatus": "untagged", "countType": "sinceImagePushed", "countUnit": "days", "countNumber": 1 },
+      "action": { "type": "expire" }
+    }
+  ]
+}
