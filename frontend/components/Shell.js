@@ -8,7 +8,7 @@ import DishaChat from '@/components/DishaChat';
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
 
-const TABS = [['/', 'Dashboard'], ['/disha', 'Disha ✨'], ['/attendance', 'Attendance'], ['/leaves', 'Leaves'], ['/expenses', 'Expenses'],
+const TABS = [['/', 'Dashboard'], ['/attendance', 'Attendance'], ['/leaves', 'Leaves'], ['/expenses', 'Expenses'],
   ['/payslips', 'Payslips'], ['/goals', 'Goals'], ['/documents', 'Documents'], ['/employees', 'Employees'], ['/profile', 'Profile'], ['/how-it-works', 'How it works']];
 
 export default function Shell({ children }) {
@@ -62,16 +62,14 @@ export default function Shell({ children }) {
       <header><b>DISHA</b><span className="row">{me.name}<button className="btn sec sm" onClick={logout}>Logout</button></span></header>
       <nav>{TABS.map(([href, label]) => <Link key={href} href={href} className={pathname === href ? 'on' : ''}>{label}</Link>)}</nav>
       <main>{children}</main>
-      {pathname !== '/disha' && <>
-        <div className={`chat-pop noprint${chat ? ' shown' : ''}`}>{chatUsed && <DishaChat />}</div>
-        <button className={`fab noprint${chat ? ' shown' : ''}`} aria-label={chat ? 'Close Disha' : 'Chat with Disha'}
-          onClick={() => { setChat(!chat); setChatUsed(true); }}>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            {chat ? <path d="M18 6 6 18M6 6l12 12" />
-              : <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />}
-          </svg>
-        </button>
-      </>}
+      <div className={`chat-pop noprint${chat ? ' shown' : ''}`}>{chatUsed && <DishaChat />}</div>
+      <button className={`fab noprint${chat ? ' shown' : ''}`} aria-label={chat ? 'Close Disha' : 'Chat with Disha'}
+        onClick={() => { setChat(!chat); setChatUsed(true); }}>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {chat ? <path d="M18 6 6 18M6 6l12 12" />
+            : <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />}
+        </svg>
+      </button>
       {msg && <div className="toast">{msg}</div>}
     </Ctx.Provider>
   );

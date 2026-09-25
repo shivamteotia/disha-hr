@@ -73,8 +73,8 @@ NDJSON stream), which calls same-origin `/api/*`
 — `next.config.mjs` rewrites that to `API_URL` (default `http://127.0.0.1:8000`) so the session cookie stays
 same-origin even from phones on the LAN. There's no client-side data-fetching library; `useLoad()` in `lib.js`
 is the shared "fetch on mount / reload" hook. Routes live under `frontend/app/(app)/<module>/page.js`, one
-page per HR module (attendance, leaves, expenses, payslips, goals, documents, employees, disha), sharing
-`frontend/components/Shell.js` (layout/nav) and `frontend/components/ui.js` (form/table primitives).
+page per HR module (attendance, leaves, expenses, payslips, goals, documents, employees), sharing
+`frontend/components/Shell.js` (layout/nav, plus the floating Disha chat button that opens `components/DishaChat.js` in a popup) and `frontend/components/ui.js` (form/table primitives).
 
 **Disha assistant** (`backend/app/agent.py`, LangGraph) routes a question through:
 ```
