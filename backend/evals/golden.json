@@ -82,6 +82,14 @@
       "truth_sql": "SELECT 12 - COALESCE(SUM(days), 0) AS v FROM leaves WHERE user_id = (SELECT id FROM users WHERE email = 'sneha.iyer@company.com') AND type = 'CL' AND status IN ('approved','pending') AND from_date >= '2026-01-01' AND from_date < '2027-01-01'"
     },
     {
+      "id": "dat-manager-cl-balance",
+      "kind": "data",
+      "user": "rahul.sharma@company.com",
+      "question": "How many casual leaves do I have left?",
+      "route": "data",
+      "truth_sql": "SELECT 12 - COALESCE(SUM(days), 0) AS v FROM leaves WHERE user_id = (SELECT id FROM users WHERE email = 'rahul.sharma@company.com') AND type = 'CL' AND status IN ('approved','pending') AND from_date >= '2026-01-01' AND from_date < '2027-01-01'"
+    },
+    {
       "id": "dat-team-pending",
       "kind": "data",
       "user": "rahul.sharma@company.com",

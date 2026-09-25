@@ -126,6 +126,8 @@ announcements(id, title, body, created)
 Rules: one SELECT statement only; query only the views above (never a table); dates are 'YYYY-MM-DD' text;
 leave `days` already counts working days (weekends and company holidays excluded). Regular employees see only
 their own rows; managers also see their team's leaves and expenses; admins see everyone.
+So a question about the asker ("my", "I", "do I have") must filter user_id = (SELECT id FROM me), even when
+it looks unnecessary - for a manager or admin the view also holds other people's rows.
 
 Leave balance (must match the app, which shows the same numbers):
   yearly quota is CL 12, SL 12, EL 15; LWP is unlimited and has no balance
