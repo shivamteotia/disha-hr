@@ -14,10 +14,12 @@ services:
     depends_on: [backend]
     restart: unless-stopped
 
-  # TLS in front of everything: Let's Encrypt cert for DOMAIN, auto-renewed, and HTTP -> HTTPS redirect
+  # TLS in front of everything: Let's Encrypt cert for DOMAIN, auto-renewed
   caddy:
     image: caddy:2
-    command: caddy reverse-proxy --from ${DOMAIN} --to frontend:8080
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
     ports:
       - "80:80"
       - "443:443"
@@ -29,3 +31,15 @@ services:
 volumes:
   data:
   caddy:
+
+configs:
+  caddyfile:
+    # Any plain-HTTP request - the domain or the bare IP - goes to the HTTPS domain. The bare IP can't serve
+    # HTTPS itself (the cert only names DOMAIN), so http://<ip> must land here, not on https://<ip>.
+    content: |
+      ${DOMAIN} {
+        reverse_proxy frontend:8080
+      }
+      :80 {
+        redir https://${DOMAIN}{uri}
+      }
