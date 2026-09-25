@@ -1,35 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
-// Render's free tier answers 429 from its edge (not our API) while the backend is asleep or failing to start
-const isHibernating = (r) => r.headers.get('x-render-routing')?.startsWith('hibernate');
-const errorText = (r, d) => isHibernating(r)
-  ? 'The server is starting up. Try again in a minute.' : d?.detail || r.statusText || `Error ${r.status}`;
-
 export async function api(path, method = 'GET', body) {
   const r = await fetch('/api' + path, method === 'GET' ? {} :
     { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
   const d = await r.json().catch(() => null);
   if (r.status === 401 && location.pathname !== '/login') location.href = '/login';
-  if (!r.ok) {
-    const err = new Error(errorText(r, d));
-    err.hibernating = isHibernating(r);
-    throw err;
-  }
+  if (!r.ok) throw new Error(d?.detail || r.statusText || `Error ${r.status}`);
   return d;
-}
-
-// A hibernated Render backend can take a few seconds to answer the ping that wakes it; retry a couple of
-// times with backoff rather than making the user click Sign in repeatedly. Not a health-check loop: it stops
-// after 2 attempts and never fires again on its own.
-export async function apiWithWake(path, method = 'GET', body, { retries = 2, baseDelayMs = 3000, onRetry } = {}) {
-  for (let i = 0; ; i++) {
-    try { return await api(path, method, body); }
-    catch (e) {
-      if (!e.hibernating || i >= retries) throw e;
-      onRetry?.(i + 1);
-      await new Promise((r) => setTimeout(r, baseDelayMs * (i + 1)));
-    }
-  }
 }
 
 // POST that reads an NDJSON stream, calling onEvent(obj) per line as it arrives; resolves when the stream ends
@@ -38,7 +15,7 @@ export async function apiStream(path, body, onEvent) {
   if (!r.ok) {
     const d = await r.json().catch(() => null);
     if (r.status === 401 && location.pathname !== '/login') location.href = '/login';
-    throw new Error(errorText(r, d));
+    throw new Error(d?.detail || r.statusText || `Error ${r.status}`);
   }
   const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = '';

@@ -23,7 +23,7 @@ except ImportError:
 
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parents[1] / 'disha.db'}")
 if DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://"):
-    # hosting providers (e.g. Render) hand out a plain postgres:// URL, which SQLAlchemy
+    # some hosting providers hand out a plain postgres:// URL, which SQLAlchemy
     # defaults to the psycopg2 dialect — we only install psycopg (v3), so force that driver.
     DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL.split("://", 1)[1]
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
